@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agenteval.benchmarks.task_loader import TaskLoadError, load_task
+from agenteval.benchmarks.task_loader import TaskLoadError, load_pack, load_task
 from agenteval.core.schemas import TaskSpec
 
 # Path to the first shipped example task, relative to the repository root.
@@ -115,3 +115,91 @@ def test_non_list_test_field_raises_clear_error(tmp_path):
     with pytest.raises(TaskLoadError) as exc_info:
         load_task(_write_task(tmp_path, data))
     assert "public_tests" in str(exc_info.value)
+
+
+# --- load_pack -------------------------------------------------------------
+
+
+def _make_pack(tmp_path: Path, tasks: dict[str, dict]) -> Path:
+    """Create a benchmark pack directory with the given ``{filename: data}``.
+
+    Always creates the ``tasks/`` subdirectory, even when ``tasks`` is empty.
+    Returns the pack directory path.
+    """
+    pack_dir = tmp_path / "pack"
+    tasks_dir = pack_dir / "tasks"
+    tasks_dir.mkdir(parents=True)
+    for filename, data in tasks.items():
+        (tasks_dir / filename).write_text(json.dumps(data), encoding="utf-8")
+    return pack_dir
+
+
+def test_load_pack_loads_multiple_tasks(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {
+            "bugfix_001.json": {"task_id": "bugfix_001", "title": "First"},
+            "bugfix_002.json": {"task_id": "bugfix_002", "title": "Second"},
+        },
+    )
+    tasks = load_pack(pack_dir)
+    assert len(tasks) == 2
+    assert all(isinstance(task, TaskSpec) for task in tasks)
+    assert {task.task_id for task in tasks} == {"bugfix_001", "bugfix_002"}
+
+
+def test_load_pack_orders_tasks_by_filename(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {
+            "bugfix_003.json": {"task_id": "bugfix_003", "title": "Third"},
+            "bugfix_001.json": {"task_id": "bugfix_001", "title": "First"},
+            "bugfix_002.json": {"task_id": "bugfix_002", "title": "Second"},
+        },
+    )
+    tasks = load_pack(pack_dir)
+    assert [task.task_id for task in tasks] == [
+        "bugfix_001",
+        "bugfix_002",
+        "bugfix_003",
+    ]
+
+
+def test_load_pack_empty_tasks_dir_returns_empty_list(tmp_path):
+    pack_dir = _make_pack(tmp_path, {})
+    assert load_pack(pack_dir) == []
+
+
+def test_load_pack_missing_pack_dir_raises_clear_error(tmp_path):
+    missing = tmp_path / "no_such_pack"
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_pack(missing)
+    assert "pack directory not found" in str(exc_info.value)
+
+
+def test_load_pack_missing_tasks_dir_raises_clear_error(tmp_path):
+    pack_dir = tmp_path / "pack"
+    pack_dir.mkdir()  # pack exists, but has no tasks/ subdirectory
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_pack(pack_dir)
+    assert "tasks" in str(exc_info.value)
+
+
+def test_load_pack_invalid_task_raises_clear_error(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {
+            "good.json": {"task_id": "good", "title": "Valid task"},
+            "bad.json": {"task_id": "bad-no-title"},  # missing "title"
+        },
+    )
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_pack(pack_dir)
+    assert "title" in str(exc_info.value)
+
+
+def test_load_pack_loads_shipped_example_pack():
+    pack_dir = REPO_ROOT / "benchmarks" / "python_bugfix_basic"
+    tasks = load_pack(pack_dir)
+    assert len(tasks) >= 1
+    assert any(task.task_id == "bugfix_001" for task in tasks)

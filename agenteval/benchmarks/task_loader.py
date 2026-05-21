@@ -100,3 +100,37 @@ def _build_task_spec(data: dict[str, Any], task_path: Path) -> TaskSpec:
             )
 
     return TaskSpec(**kwargs)
+
+
+def load_pack(pack_dir: str | Path) -> list[TaskSpec]:
+    """Load every benchmark task in a pack directory.
+
+    A benchmark pack is a directory containing a ``tasks/`` subdirectory of JSON
+    task files. Each ``*.json`` file inside ``tasks/`` is loaded via
+    :func:`load_task`.
+
+    Args:
+        pack_dir: Path to a benchmark pack directory.
+
+    Returns:
+        A list of :class:`TaskSpec`, ordered deterministically by filename.
+        Empty if ``tasks/`` contains no JSON files.
+
+    Raises:
+        TaskLoadError: If ``pack_dir`` or its ``tasks/`` subdirectory does not
+            exist, or if any task file inside the pack is invalid.
+    """
+    pack_path = Path(pack_dir)
+
+    if not pack_path.is_dir():
+        raise TaskLoadError(f"Benchmark pack directory not found: {pack_path}")
+
+    tasks_dir = pack_path / "tasks"
+    if not tasks_dir.is_dir():
+        raise TaskLoadError(
+            f"Benchmark pack {pack_path} has no 'tasks' directory: {tasks_dir}"
+        )
+
+    # Sort by filename for deterministic, reproducible task ordering.
+    task_files = sorted(tasks_dir.glob("*.json"))
+    return [load_task(task_file) for task_file in task_files]
