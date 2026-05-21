@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agenteval.core.schemas import TaskSpec
+from agenteval.core.schemas import BenchmarkPack, TaskSpec
 
 # Fields a task JSON file must contain.
 REQUIRED_FIELDS: tuple[str, ...] = ("task_id", "title")
@@ -118,7 +118,8 @@ def load_pack(pack_dir: str | Path) -> list[TaskSpec]:
 
     Raises:
         TaskLoadError: If ``pack_dir`` or its ``tasks/`` subdirectory does not
-            exist, or if any task file inside the pack is invalid.
+            exist, if any task file inside the pack is invalid, or if two tasks
+            share the same ``task_id``.
     """
     pack_path = Path(pack_dir)
 
@@ -133,4 +134,83 @@ def load_pack(pack_dir: str | Path) -> list[TaskSpec]:
 
     # Sort by filename for deterministic, reproducible task ordering.
     task_files = sorted(tasks_dir.glob("*.json"))
-    return [load_task(task_file) for task_file in task_files]
+    tasks = [load_task(task_file) for task_file in task_files]
+    _check_duplicate_task_ids(tasks, pack_path)
+    return tasks
+
+
+def _check_duplicate_task_ids(tasks: list[TaskSpec], pack_path: Path) -> None:
+    """Raise :class:`TaskLoadError` if any ``task_id`` appears more than once."""
+    seen: set[str] = set()
+    for task in tasks:
+        if task.task_id in seen:
+            raise TaskLoadError(
+                f"Benchmark pack {pack_path} contains duplicate "
+                f"task_id: '{task.task_id}'"
+            )
+        seen.add(task.task_id)
+
+
+def load_benchmark_pack(pack_dir: str | Path) -> BenchmarkPack:
+    """Load a benchmark pack's metadata and tasks into a :class:`BenchmarkPack`.
+
+    The pack directory must contain a ``pack.json`` metadata file alongside its
+    ``tasks/`` directory. Tasks are loaded (and duplicate-checked) via
+    :func:`load_pack`.
+
+    Args:
+        pack_dir: Path to a benchmark pack directory.
+
+    Returns:
+        A :class:`BenchmarkPack` with metadata and loaded tasks.
+
+    Raises:
+        TaskLoadError: If the pack directory or ``pack.json`` is missing,
+            ``pack.json`` is not a valid JSON object, the required ``name``
+            field is absent, or task loading fails.
+    """
+    pack_path = Path(pack_dir)
+
+    if not pack_path.is_dir():
+        raise TaskLoadError(f"Benchmark pack directory not found: {pack_path}")
+
+    pack_file = pack_path / "pack.json"
+    if not pack_file.is_file():
+        raise TaskLoadError(
+            f"Benchmark pack {pack_path} is missing required 'pack.json': "
+            f"{pack_file}"
+        )
+
+    try:
+        raw = pack_file.read_text(encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - rare I/O failure
+        raise TaskLoadError(
+            f"Could not read pack metadata {pack_file}: {exc}"
+        ) from exc
+
+    try:
+        metadata = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise TaskLoadError(
+            f"Invalid JSON in pack metadata {pack_file}: {exc}"
+        ) from exc
+
+    if not isinstance(metadata, dict):
+        raise TaskLoadError(
+            f"Pack metadata {pack_file} must contain a JSON object, "
+            f"got {type(metadata).__name__}"
+        )
+
+    if "name" not in metadata:
+        raise TaskLoadError(
+            f"Pack metadata {pack_file} is missing required field: name"
+        )
+
+    tasks = load_pack(pack_path)
+
+    return BenchmarkPack(
+        name=metadata["name"],
+        version=metadata.get("version", "1.0"),
+        description=metadata.get("description", ""),
+        tasks=tasks,
+    )

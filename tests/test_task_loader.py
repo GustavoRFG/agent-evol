@@ -5,8 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from agenteval.benchmarks.task_loader import TaskLoadError, load_pack, load_task
-from agenteval.core.schemas import TaskSpec
+from agenteval.benchmarks.task_loader import (
+    TaskLoadError,
+    load_benchmark_pack,
+    load_pack,
+    load_task,
+)
+from agenteval.core.schemas import BenchmarkPack, TaskSpec
 
 # Path to the first shipped example task, relative to the repository root.
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -120,17 +125,26 @@ def test_non_list_test_field_raises_clear_error(tmp_path):
 # --- load_pack -------------------------------------------------------------
 
 
-def _make_pack(tmp_path: Path, tasks: dict[str, dict]) -> Path:
+def _make_pack(
+    tmp_path: Path,
+    tasks: dict[str, dict],
+    metadata: dict | None = None,
+) -> Path:
     """Create a benchmark pack directory with the given ``{filename: data}``.
 
     Always creates the ``tasks/`` subdirectory, even when ``tasks`` is empty.
-    Returns the pack directory path.
+    If ``metadata`` is given, it is written as ``pack.json``. Returns the pack
+    directory path.
     """
     pack_dir = tmp_path / "pack"
     tasks_dir = pack_dir / "tasks"
     tasks_dir.mkdir(parents=True)
     for filename, data in tasks.items():
         (tasks_dir / filename).write_text(json.dumps(data), encoding="utf-8")
+    if metadata is not None:
+        (pack_dir / "pack.json").write_text(
+            json.dumps(metadata), encoding="utf-8"
+        )
     return pack_dir
 
 
@@ -203,3 +217,90 @@ def test_load_pack_loads_shipped_example_pack():
     tasks = load_pack(pack_dir)
     assert len(tasks) >= 1
     assert any(task.task_id == "bugfix_001" for task in tasks)
+
+
+def test_load_pack_duplicate_task_id_raises_clear_error(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {
+            "a.json": {"task_id": "dup", "title": "First"},
+            "b.json": {"task_id": "dup", "title": "Second"},
+        },
+    )
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_pack(pack_dir)
+    message = str(exc_info.value)
+    assert "dup" in message
+    assert "duplicate" in message.lower()
+
+
+# --- load_benchmark_pack ---------------------------------------------------
+
+
+def test_load_benchmark_pack_success(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {
+            "bugfix_001.json": {"task_id": "bugfix_001", "title": "First"},
+            "bugfix_002.json": {"task_id": "bugfix_002", "title": "Second"},
+        },
+        metadata={
+            "name": "demo_pack",
+            "version": "2.0",
+            "description": "A demo pack.",
+        },
+    )
+    pack = load_benchmark_pack(pack_dir)
+    assert isinstance(pack, BenchmarkPack)
+    assert pack.name == "demo_pack"
+    assert pack.version == "2.0"
+    assert pack.description == "A demo pack."
+    assert len(pack.tasks) == 2
+    assert all(isinstance(task, TaskSpec) for task in pack.tasks)
+
+
+def test_load_benchmark_pack_missing_pack_json_raises_clear_error(tmp_path):
+    # No metadata argument -> no pack.json is written.
+    pack_dir = _make_pack(tmp_path, {"a.json": {"task_id": "a", "title": "A"}})
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_benchmark_pack(pack_dir)
+    assert "pack.json" in str(exc_info.value)
+
+
+def test_load_benchmark_pack_missing_name_raises_clear_error(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {"a.json": {"task_id": "a", "title": "A"}},
+        metadata={"version": "1.0", "description": "No name field."},
+    )
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_benchmark_pack(pack_dir)
+    assert "name" in str(exc_info.value)
+
+
+def test_load_benchmark_pack_defaults_version_and_description(tmp_path):
+    pack_dir = _make_pack(
+        tmp_path,
+        {"a.json": {"task_id": "a", "title": "A"}},
+        metadata={"name": "minimal_pack"},
+    )
+    pack = load_benchmark_pack(pack_dir)
+    assert pack.name == "minimal_pack"
+    assert pack.version == "1.0"
+    assert pack.description == ""
+
+
+def test_load_benchmark_pack_missing_dir_raises_clear_error(tmp_path):
+    with pytest.raises(TaskLoadError) as exc_info:
+        load_benchmark_pack(tmp_path / "no_such_pack")
+    assert "not found" in str(exc_info.value)
+
+
+def test_load_shipped_example_benchmark_pack():
+    pack_dir = REPO_ROOT / "benchmarks" / "python_bugfix_basic"
+    pack = load_benchmark_pack(pack_dir)
+    assert isinstance(pack, BenchmarkPack)
+    assert pack.name == "python_bugfix_basic"
+    assert pack.version == "1.0"
+    assert len(pack.tasks) >= 1
+    assert any(task.task_id == "bugfix_001" for task in pack.tasks)

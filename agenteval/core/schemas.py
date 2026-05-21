@@ -51,6 +51,20 @@ class TaskSpec:
 
 
 @dataclass
+class BenchmarkPack:
+    """A named, versioned collection of benchmark :class:`TaskSpec` tasks.
+
+    A pack groups related tasks (see ``docs/benchmark_design_notes.md`` §3) and
+    carries its own metadata so it is a self-describing, comparable unit.
+    """
+
+    name: str
+    version: str = "1.0"
+    description: str = ""
+    tasks: list[TaskSpec] = field(default_factory=list)
+
+
+@dataclass
 class AgentRun:
     """A single execution of an agent against a :class:`TaskSpec`."""
 
