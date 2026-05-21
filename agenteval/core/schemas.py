@@ -35,10 +35,15 @@ class WeaknessCode(str, Enum):
 
 @dataclass
 class TaskSpec:
-    """A benchmark task presented to an agent."""
+    """A benchmark task presented to an agent.
+
+    ``version`` identifies the task revision so results stay comparable across
+    runs (see ``docs/evaluation_protocol.md`` §6 — versioned benchmark tasks).
+    """
 
     task_id: str
     title: str
+    version: str = "1.0"
     description: str = ""
     repo_path: str = ""
     public_tests: list[str] = field(default_factory=list)

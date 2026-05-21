@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "task_id": "bugfix_001",
+  "title": "Fix off-by-one error in inclusive range summation",
+  "description": "The sum_range(start, end) function is meant to return the sum of every integer from start to end inclusive. It currently stops one short and excludes end. Fix the off-by-one error so the endpoint is included, without changing the function signature.",
+  "repo_path": "repos/bugfix_001",
+  "public_tests": [
+    "tests/test_sum_range.py::test_basic_range",
+    "tests/test_sum_range.py::test_single_element"
+  ],
+  "hidden_tests": [
+    "tests/test_sum_range_hidden.py::test_endpoint_is_included",
+    "tests/test_sum_range_hidden.py::test_negative_range"
+  ]
+}
