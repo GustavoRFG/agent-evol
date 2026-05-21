@@ -97,3 +97,21 @@ class EvaluationResult:
     passed_hidden_tests: bool = False
     weaknesses: list[WeaknessCode] = field(default_factory=list)
     rationale: str = ""
+
+
+@dataclass
+class RunReport:
+    """An aggregated summary of evaluating one agent on one benchmark pack.
+
+    Produced from a list of :class:`EvaluationResult` objects. ``weakness_tally``
+    keys are plain strings (weakness code names) so the report serializes
+    cleanly to JSON.
+    """
+
+    pack_name: str
+    pack_version: str
+    agent_name: str
+    total_tasks: int = 0
+    mean_score: float = 0.0
+    weakness_tally: dict[str, int] = field(default_factory=dict)
+    results: list[EvaluationResult] = field(default_factory=list)
