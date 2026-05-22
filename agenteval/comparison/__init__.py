@@ -4,6 +4,11 @@ from agenteval.comparison.comparison_report import (
     ComparisonReportError,
     build_comparison_report,
 )
+from agenteval.comparison.divergence import (
+    TaskDivergence,
+    build_task_divergence_report,
+    top_divergent_tasks,
+)
 from agenteval.comparison.markdown import (
     render_comparison_report_markdown,
     save_comparison_report_markdown,
@@ -17,9 +22,12 @@ from agenteval.comparison.task_matrix import (
 __all__ = [
     "ComparisonMatrixError",
     "ComparisonReportError",
+    "TaskDivergence",
     "TaskScoreRow",
     "build_comparison_report",
+    "build_task_divergence_report",
     "build_task_score_matrix",
     "render_comparison_report_markdown",
     "save_comparison_report_markdown",
+    "top_divergent_tasks",
 ]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agenteval.comparison.divergence import top_divergent_tasks
 from agenteval.comparison.task_matrix import build_task_score_matrix
 from agenteval.core.schemas import ComparisonReport
 
@@ -43,6 +44,8 @@ def render_comparison_report_markdown(comparison: ComparisonReport) -> str:
     lines.extend(_ranking_section(comparison))
     lines.append("")
     lines.extend(_task_matrix_section(comparison))
+    lines.append("")
+    lines.extend(_divergence_section(comparison))
     lines.append("")
     lines.extend(_weakness_section(comparison))
     lines.append("")
@@ -105,6 +108,35 @@ def _task_matrix_section(comparison: ComparisonReport) -> list[str]:
         ]
         lines.append(f"| {row.task_id} | " + " | ".join(cells) + " |")
     return lines
+
+
+def _divergence_section(comparison: ComparisonReport) -> list[str]:
+    """Render the tasks on which agents disagree most, ordered by spread."""
+    lines = ["## Tasks where agents most disagree", ""]
+    divergences = top_divergent_tasks(comparison)
+    if not divergences:
+        lines.append("_No tasks to compare._")
+        return lines
+
+    lines.append(
+        "| Task ID | Score spread | Best agents | Best score "
+        "| Worst agents | Worst score |"
+    )
+    lines.append("| --- | --- | --- | --- | --- | --- |")
+    for divergence in divergences:
+        lines.append(
+            f"| {divergence.task_id} "
+            f"| {_format_score(divergence.score_spread)} "
+            f"| {_agent_list(divergence.best_agents)} "
+            f"| {_format_score(divergence.best_score)} "
+            f"| {_agent_list(divergence.worst_agents)} "
+            f"| {_format_score(divergence.worst_score)} |"
+        )
+    return lines
+
+
+def _agent_list(agents: list[str]) -> str:
+    return ", ".join(agents) if agents else "—"
 
 
 def _weakness_section(comparison: ComparisonReport) -> list[str]:
