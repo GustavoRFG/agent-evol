@@ -5,6 +5,11 @@ from agenteval.evaluation.batch_builder import (
     TaskEvidence,
     build_pack_evaluation_results,
 )
+from agenteval.evaluation.pack_report import (
+    evaluate_pack_to_json_report,
+    evaluate_pack_to_markdown_report,
+    evaluate_pack_to_report,
+)
 from agenteval.evaluation.patch_evidence import (
     attach_patch_summary_to_result,
     attach_patch_to_result,
@@ -22,4 +27,7 @@ __all__ = [
     "build_evaluation_result",
     "build_pack_evaluation_results",
     "build_unverified_result",
+    "evaluate_pack_to_json_report",
+    "evaluate_pack_to_markdown_report",
+    "evaluate_pack_to_report",
 ]
