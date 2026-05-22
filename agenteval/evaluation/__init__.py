@@ -1,5 +1,10 @@
-"""Evidence-attachment and result-building helpers for AgentEval Forge."""
+"""Evidence-attachment, result-building, and batch helpers for AgentEval Forge."""
 
+from agenteval.evaluation.batch_builder import (
+    BatchEvaluationError,
+    TaskEvidence,
+    build_pack_evaluation_results,
+)
 from agenteval.evaluation.patch_evidence import (
     attach_patch_summary_to_result,
     attach_patch_to_result,
@@ -10,8 +15,11 @@ from agenteval.evaluation.result_builder import (
 )
 
 __all__ = [
+    "BatchEvaluationError",
+    "TaskEvidence",
     "attach_patch_summary_to_result",
     "attach_patch_to_result",
     "build_evaluation_result",
+    "build_pack_evaluation_results",
     "build_unverified_result",
 ]
