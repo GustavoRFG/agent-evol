@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agenteval.comparison.divergence import top_divergent_tasks
+from agenteval.comparison.pairwise import compare_agents_pairwise
 from agenteval.comparison.task_matrix import build_task_score_matrix
 from agenteval.core.schemas import ComparisonReport
 
@@ -19,9 +20,12 @@ def render_comparison_report_markdown(comparison: ComparisonReport) -> str:
     """Render a :class:`ComparisonReport` as a Markdown document.
 
     The document includes a title, pack metadata, a ranking table (rank, agent,
-    mean score), a per-agent weakness tally, and an explanatory notes section.
+    mean score), a head-to-head pairwise summary of the top two ranked agents,
+    a per-task score matrix, a divergence section, a per-agent weakness tally,
+    and an explanatory notes section.
 
     Ordering is deterministic: the ranking table follows ``comparison.ranking``,
+    the pairwise summary uses the first two entries of ``comparison.ranking``,
     the weakness section follows ``comparison.agents``, and each agent's
     weakness codes are listed in alphabetical order.
 
@@ -42,6 +46,8 @@ def render_comparison_report_markdown(comparison: ComparisonReport) -> str:
     lines.append("")
 
     lines.extend(_ranking_section(comparison))
+    lines.append("")
+    lines.extend(_pairwise_section(comparison))
     lines.append("")
     lines.extend(_task_matrix_section(comparison))
     lines.append("")
@@ -83,6 +89,34 @@ def _ranking_section(comparison: ComparisonReport) -> list[str]:
     for rank, agent in enumerate(comparison.ranking, start=1):
         score = comparison.mean_scores_by_agent.get(agent, 0.0)
         lines.append(f"| {rank} | {agent} | {_format_score(score)} |")
+    return lines
+
+
+def _pairwise_section(comparison: ComparisonReport) -> list[str]:
+    """Render a head-to-head summary of the top two ranked agents.
+
+    Only the top pair is shown: this keeps the report compact while still
+    answering the AI-Code-Ranking question — of the two strongest agents,
+    which one wins, and by how much. Every full pair remains available via
+    :func:`~agenteval.comparison.pairwise.compare_all_agent_pairs`.
+    """
+    lines = ["## Pairwise summary", ""]
+    if len(comparison.ranking) < 2:
+        lines.append("_Need at least two agents for a pairwise comparison._")
+        return lines
+
+    agent_a, agent_b = comparison.ranking[0], comparison.ranking[1]
+    pair = compare_agents_pairwise(comparison, agent_a, agent_b)
+    lines.append("Head-to-head between the top two ranked agents:")
+    lines.append("")
+    lines.append("| Agent A | Agent B | Winner | Score delta |")
+    lines.append("| --- | --- | --- | --- |")
+    lines.append(
+        f"| {pair.agent_a} | {pair.agent_b} | {pair.winner} "
+        f"| {_format_score(pair.score_delta)} |"
+    )
+    lines.append("")
+    lines.append(pair.rationale)
     return lines
 
 

@@ -13,6 +13,12 @@ from agenteval.comparison.markdown import (
     render_comparison_report_markdown,
     save_comparison_report_markdown,
 )
+from agenteval.comparison.pairwise import (
+    PairwiseComparison,
+    PairwiseComparisonError,
+    compare_agents_pairwise,
+    compare_all_agent_pairs,
+)
 from agenteval.comparison.persistence import (
     ComparisonPersistenceError,
     comparison_report_from_dict,
@@ -30,11 +36,15 @@ __all__ = [
     "ComparisonMatrixError",
     "ComparisonPersistenceError",
     "ComparisonReportError",
+    "PairwiseComparison",
+    "PairwiseComparisonError",
     "TaskDivergence",
     "TaskScoreRow",
     "build_comparison_report",
     "build_task_divergence_report",
     "build_task_score_matrix",
+    "compare_agents_pairwise",
+    "compare_all_agent_pairs",
     "comparison_report_from_dict",
     "comparison_report_to_dict",
     "load_comparison_report",
