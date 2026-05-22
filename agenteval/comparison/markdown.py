@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agenteval.comparison.task_matrix import build_task_score_matrix
 from agenteval.core.schemas import ComparisonReport
 
 
@@ -40,6 +41,8 @@ def render_comparison_report_markdown(comparison: ComparisonReport) -> str:
     lines.append("")
 
     lines.extend(_ranking_section(comparison))
+    lines.append("")
+    lines.extend(_task_matrix_section(comparison))
     lines.append("")
     lines.extend(_weakness_section(comparison))
     lines.append("")
@@ -77,6 +80,30 @@ def _ranking_section(comparison: ComparisonReport) -> list[str]:
     for rank, agent in enumerate(comparison.ranking, start=1):
         score = comparison.mean_scores_by_agent.get(agent, 0.0)
         lines.append(f"| {rank} | {agent} | {_format_score(score)} |")
+    return lines
+
+
+def _task_matrix_section(comparison: ComparisonReport) -> list[str]:
+    """Render the per-task score matrix: one row per task, one column per agent.
+
+    Cells are score-only (fixed ``.4f``) to keep the table readable as the
+    agent count grows; per-task pass flags remain available on the underlying
+    :class:`~agenteval.comparison.task_matrix.TaskScoreRow` objects.
+    """
+    lines = ["## Per-task score matrix", ""]
+    matrix = build_task_score_matrix(comparison)
+    if not matrix or not comparison.agents:
+        lines.append("_No tasks to compare._")
+        return lines
+
+    lines.append("| Task ID | " + " | ".join(comparison.agents) + " |")
+    lines.append("| --- | " + " | ".join("---" for _ in comparison.agents) + " |")
+    for row in matrix:
+        cells = [
+            _format_score(row.scores_by_agent.get(agent, 0.0))
+            for agent in comparison.agents
+        ]
+        lines.append(f"| {row.task_id} | " + " | ".join(cells) + " |")
     return lines
 
 
