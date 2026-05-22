@@ -116,3 +116,24 @@ class RunReport:
     mean_score: float = 0.0
     weakness_tally: dict[str, int] = field(default_factory=dict)
     results: list[EvaluationResult] = field(default_factory=list)
+
+
+@dataclass
+class ComparisonReport:
+    """A cross-agent comparison of multiple :class:`RunReport` objects.
+
+    Every compared report must come from the same benchmark pack and version.
+    Agents are identified only by ``agent_name`` — the comparison carries no
+    provider-specific knowledge and is fully agent-agnostic.
+    """
+
+    pack_name: str
+    pack_version: str
+    agents: list[str] = field(default_factory=list)
+    total_tasks: int = 0
+    mean_scores_by_agent: dict[str, float] = field(default_factory=dict)
+    ranking: list[str] = field(default_factory=list)
+    weakness_tally_by_agent: dict[str, dict[str, int]] = field(
+        default_factory=dict
+    )
+    reports: list[RunReport] = field(default_factory=list)
