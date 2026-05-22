@@ -43,6 +43,8 @@ def render_run_report_markdown(report: RunReport) -> str:
     lines.append("")
     lines.extend(_results_table_section(report))
     lines.append("")
+    lines.extend(_patch_evidence_section(report))
+    lines.append("")
     lines.extend(_rationale_section(report))
 
     return "\n".join(lines).rstrip("\n") + "\n"
@@ -96,6 +98,43 @@ def _results_table_section(report: RunReport) -> list[str]:
             f"| {_weaknesses_cell(result)} |"
         )
     return lines
+
+
+def _patch_evidence_section(report: RunReport) -> list[str]:
+    lines = ["## Patch evidence", ""]
+    if not report.results:
+        lines.append("_No tasks were evaluated._")
+        return lines
+
+    for result in report.results:
+        lines.append(f"### {result.task_id}")
+        lines.append("")
+        lines.extend(_patch_evidence_for_result(result))
+        lines.append("")
+    return lines
+
+
+def _patch_evidence_for_result(result: EvaluationResult) -> list[str]:
+    """Render the patch evidence lines for a single task result."""
+    patch = result.patch_summary
+    if patch is None:
+        return ["_No patch evidence recorded._"]
+
+    if not (patch.changed_files or patch.added_files or patch.deleted_files):
+        return [
+            "_Patch evidence recorded, but no changed/added/deleted files "
+            "were detected._"
+        ]
+
+    return [
+        f"- **Changed files:** {_file_list(patch.changed_files)}",
+        f"- **Added files:** {_file_list(patch.added_files)}",
+        f"- **Deleted files:** {_file_list(patch.deleted_files)}",
+    ]
+
+
+def _file_list(files: list[str]) -> str:
+    return ", ".join(files) if files else "—"
 
 
 def _rationale_section(report: RunReport) -> list[str]:

@@ -97,6 +97,7 @@ class EvaluationResult:
     passed_hidden_tests: bool = False
     weaknesses: list[WeaknessCode] = field(default_factory=list)
     rationale: str = ""
+    patch_summary: PatchSummary | None = None
 
 
 @dataclass

@@ -16,6 +16,7 @@ from pathlib import Path
 from agenteval.core.schemas import (
     BenchmarkPack,
     EvaluationResult,
+    PatchSummary,
     RunReport,
     WeaknessCode,
 )
@@ -167,6 +168,11 @@ def _weakness_key(weakness: object) -> str:
 
 def _result_to_dict(result: EvaluationResult) -> dict:
     """Convert one :class:`EvaluationResult` into a JSON-friendly dict."""
+    patch_summary = (
+        _patch_summary_to_dict(result.patch_summary)
+        if result.patch_summary is not None
+        else None
+    )
     return {
         "task_id": result.task_id,
         "run_id": result.run_id,
@@ -175,7 +181,32 @@ def _result_to_dict(result: EvaluationResult) -> dict:
         "passed_hidden_tests": result.passed_hidden_tests,
         "weaknesses": [_weakness_key(w) for w in result.weaknesses],
         "rationale": result.rationale,
+        "patch_summary": patch_summary,
     }
+
+
+def _patch_summary_to_dict(patch_summary: PatchSummary) -> dict:
+    """Convert a :class:`PatchSummary` into a JSON-friendly dict."""
+    return {
+        "changed_files": list(patch_summary.changed_files),
+        "added_files": list(patch_summary.added_files),
+        "deleted_files": list(patch_summary.deleted_files),
+        "diff_text": patch_summary.diff_text,
+    }
+
+
+def _patch_summary_from_dict(data: dict) -> PatchSummary:
+    """Reconstruct a :class:`PatchSummary` from a dict."""
+    if not isinstance(data, dict):
+        raise RunReportError(
+            f"patch_summary must be a JSON object, got {type(data).__name__}"
+        )
+    return PatchSummary(
+        changed_files=list(data.get("changed_files", [])),
+        added_files=list(data.get("added_files", [])),
+        deleted_files=list(data.get("deleted_files", [])),
+        diff_text=data.get("diff_text", ""),
+    )
 
 
 def _result_from_dict(data: dict) -> EvaluationResult:
@@ -198,6 +229,14 @@ def _result_from_dict(data: dict) -> EvaluationResult:
         except ValueError as exc:
             raise RunReportError(f"Unknown weakness code: {code!r}") from exc
 
+    # patch_summary is optional: older reports predate the field entirely.
+    patch_summary_data = data.get("patch_summary")
+    patch_summary = (
+        _patch_summary_from_dict(patch_summary_data)
+        if patch_summary_data is not None
+        else None
+    )
+
     return EvaluationResult(
         task_id=data["task_id"],
         run_id=data["run_id"],
@@ -206,4 +245,5 @@ def _result_from_dict(data: dict) -> EvaluationResult:
         passed_hidden_tests=data.get("passed_hidden_tests", False),
         weaknesses=weaknesses,
         rationale=data.get("rationale", ""),
+        patch_summary=patch_summary,
     )
