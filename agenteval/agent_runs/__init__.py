@@ -13,6 +13,12 @@ from agenteval.agent_runs.artifacts import (
     make_agent_run_id,
     validate_agent_run_artifact,
 )
+from agenteval.agent_runs.discovery import (
+    AgentRunDiscoveryError,
+    discover_agent_run_artifact_paths,
+    load_agent_run_artifacts_from_dir,
+    load_agent_run_artifacts_with_paths,
+)
 from agenteval.agent_runs.persistence import (
     AgentRunPersistenceError,
     load_agent_run_artifact,
@@ -23,10 +29,14 @@ from agenteval.agent_runs.persistence import (
 __all__ = [
     "AgentRunArtifact",
     "AgentRunArtifactError",
+    "AgentRunDiscoveryError",
     "AgentRunPersistenceError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
+    "discover_agent_run_artifact_paths",
     "load_agent_run_artifact",
+    "load_agent_run_artifacts_from_dir",
+    "load_agent_run_artifacts_with_paths",
     "make_agent_run_id",
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
