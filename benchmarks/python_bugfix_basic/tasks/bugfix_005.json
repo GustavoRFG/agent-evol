@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "task_id": "bugfix_005",
+  "title": "Make is_within_range inclusive of both numeric boundaries",
+  "description": "The is_within_range(value, low, high) function is meant to return True when value lies between low and high inclusive, and False otherwise. It currently uses strict inequalities (low < value < high), so it wrongly reports the lower and upper boundary values as outside the range, and it also fails the obvious zero and negative-bound cases. Replace the comparisons with inclusive ones so values equal to low or high return True, without changing the signature or the behaviour for values strictly inside or strictly outside the range.",
+  "repo_path": "benchmarks/python_bugfix_basic/repos/bugfix_005",
+  "public_tests": [
+    "tests/test_is_within_range.py::test_value_strictly_inside_range",
+    "tests/test_is_within_range.py::test_value_strictly_outside_range"
+  ],
+  "hidden_tests": [
+    "tests/test_is_within_range_hidden.py::test_lower_bound_is_inclusive",
+    "tests/test_is_within_range_hidden.py::test_upper_bound_is_inclusive"
+  ]
+}

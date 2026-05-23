@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "task_id": "bugfix_003",
+  "title": "Make normalize_name strip leading and trailing whitespace consistently",
+  "description": "The normalize_name(text) function is meant to return a canonical form of a person's name: lowercased, with every run of internal whitespace collapsed to a single space, and with no leading or trailing whitespace. It currently lowercases and collapses internal runs correctly but forgets to strip the leading and trailing whitespace. Fix the normalization so the returned string never starts or ends with a whitespace character, without changing the signature or the behaviour for already-normalized inputs.",
+  "repo_path": "benchmarks/python_bugfix_basic/repos/bugfix_003",
+  "public_tests": [
+    "tests/test_normalize_name.py::test_lowercases_letters",
+    "tests/test_normalize_name.py::test_collapses_internal_spaces"
+  ],
+  "hidden_tests": [
+    "tests/test_normalize_name_hidden.py::test_strips_leading_whitespace",
+    "tests/test_normalize_name_hidden.py::test_strips_trailing_whitespace"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "task_id": "bugfix_004",
+  "title": "Guard count_words against None and non-string input",
+  "description": "The count_words(text) function is meant to return the number of whitespace-separated words in a string. It must return 0 when text is None or an empty string, and raise TypeError with a clear message when text is neither None nor a str. It currently calls text.split() unconditionally, so passing None raises AttributeError and passing other non-string types fails with confusing errors. Add the guards so the function returns 0 for None and empty strings, raises TypeError for non-string non-None inputs, and keeps the existing behaviour for normal strings.",
+  "repo_path": "benchmarks/python_bugfix_basic/repos/bugfix_004",
+  "public_tests": [
+    "tests/test_count_words.py::test_counts_words_in_sentence",
+    "tests/test_count_words.py::test_counts_single_word"
+  ],
+  "hidden_tests": [
+    "tests/test_count_words_hidden.py::test_none_input_returns_zero",
+    "tests/test_count_words_hidden.py::test_non_string_input_raises_type_error"
+  ]
+}

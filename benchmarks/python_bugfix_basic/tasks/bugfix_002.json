@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "task_id": "bugfix_002",
+  "title": "Return 0.0 from safe_average for an empty input list",
+  "description": "The safe_average(values) function is meant to return the arithmetic mean of a list of numbers, and 0.0 when the list is empty. It currently divides by len(values) unconditionally, so calling it with an empty list raises ZeroDivisionError. Guard the empty-list case so the function returns 0.0 (a float) without changing the signature or the behaviour for non-empty inputs.",
+  "repo_path": "benchmarks/python_bugfix_basic/repos/bugfix_002",
+  "public_tests": [
+    "tests/test_safe_average.py::test_simple_integer_average",
+    "tests/test_safe_average.py::test_average_of_floats"
+  ],
+  "hidden_tests": [
+    "tests/test_safe_average_hidden.py::test_empty_list_returns_zero_float",
+    "tests/test_safe_average_hidden.py::test_single_element_list"
+  ]
+}
