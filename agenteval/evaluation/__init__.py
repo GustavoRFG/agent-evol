@@ -18,6 +18,10 @@ from agenteval.evaluation.result_builder import (
     build_evaluation_result,
     build_unverified_result,
 )
+from agenteval.evaluation.test_evidence import (
+    build_task_evidence_from_pytest_results,
+    build_task_evidence_from_task_test_run,
+)
 
 __all__ = [
     "BatchEvaluationError",
@@ -26,6 +30,8 @@ __all__ = [
     "attach_patch_to_result",
     "build_evaluation_result",
     "build_pack_evaluation_results",
+    "build_task_evidence_from_pytest_results",
+    "build_task_evidence_from_task_test_run",
     "build_unverified_result",
     "evaluate_pack_to_json_report",
     "evaluate_pack_to_markdown_report",
