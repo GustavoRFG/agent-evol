@@ -19,6 +19,12 @@ from agenteval.agent_runs.discovery import (
     load_agent_run_artifacts_from_dir,
     load_agent_run_artifacts_with_paths,
 )
+from agenteval.agent_runs.evaluation import (
+    AgentRunEvaluationError,
+    build_evaluation_result_from_ingested_run,
+    build_evaluation_results_from_agent_artifacts,
+    build_evaluation_results_from_ingested_runs,
+)
 from agenteval.agent_runs.ingestion import (
     AgentRunIngestionError,
     IngestedAgentRun,
@@ -38,11 +44,15 @@ __all__ = [
     "AgentRunArtifact",
     "AgentRunArtifactError",
     "AgentRunDiscoveryError",
+    "AgentRunEvaluationError",
     "AgentRunIngestionError",
     "AgentRunPersistenceError",
     "IngestedAgentRun",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
+    "build_evaluation_result_from_ingested_run",
+    "build_evaluation_results_from_agent_artifacts",
+    "build_evaluation_results_from_ingested_runs",
     "build_preliminary_task_evidence_from_artifact",
     "discover_agent_run_artifact_paths",
     "ingest_agent_run_artifact",
