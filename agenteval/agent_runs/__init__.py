@@ -45,6 +45,11 @@ from agenteval.agent_runs.reporting import (
     build_run_reports_from_agent_artifact_dir,
     build_run_reports_from_agent_artifacts,
 )
+from agenteval.agent_runs.verification import (
+    AgentRunVerificationError,
+    verify_agent_run_artifact,
+    verify_ingested_agent_run,
+)
 
 __all__ = [
     "AgentRunArtifact",
@@ -54,6 +59,7 @@ __all__ = [
     "AgentRunIngestionError",
     "AgentRunPersistenceError",
     "AgentRunReportingError",
+    "AgentRunVerificationError",
     "IngestedAgentRun",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
@@ -75,4 +81,6 @@ __all__ = [
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
     "validate_agent_run_artifact",
+    "verify_agent_run_artifact",
+    "verify_ingested_agent_run",
 ]
