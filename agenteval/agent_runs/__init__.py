@@ -48,7 +48,9 @@ from agenteval.agent_runs.reporting import (
 from agenteval.agent_runs.verification import (
     AgentRunVerificationError,
     verify_agent_run_artifact,
+    verify_agent_run_artifacts,
     verify_ingested_agent_run,
+    verify_ingested_agent_runs,
 )
 
 __all__ = [
@@ -82,5 +84,7 @@ __all__ = [
     "save_agent_run_artifact_folder",
     "validate_agent_run_artifact",
     "verify_agent_run_artifact",
+    "verify_agent_run_artifacts",
     "verify_ingested_agent_run",
+    "verify_ingested_agent_runs",
 ]
