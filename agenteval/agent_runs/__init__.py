@@ -13,12 +13,22 @@ from agenteval.agent_runs.artifacts import (
     make_agent_run_id,
     validate_agent_run_artifact,
 )
+from agenteval.agent_runs.persistence import (
+    AgentRunPersistenceError,
+    load_agent_run_artifact,
+    save_agent_run_artifact,
+    save_agent_run_artifact_folder,
+)
 
 __all__ = [
     "AgentRunArtifact",
     "AgentRunArtifactError",
+    "AgentRunPersistenceError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
+    "load_agent_run_artifact",
     "make_agent_run_id",
+    "save_agent_run_artifact",
+    "save_agent_run_artifact_folder",
     "validate_agent_run_artifact",
 ]

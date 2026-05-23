@@ -149,21 +149,31 @@ def agent_run_artifact_from_dict(data: dict) -> AgentRunArtifact:
             f"data must be a dict, got {type(data).__name__}"
         )
 
-    try:
-        artifact = AgentRunArtifact(
-            agent_name=data.get("agent_name", ""),
-            task_id=data.get("task_id", ""),
-            run_id=data.get("run_id", ""),
-            diff_text=data.get("diff_text", ""),
-            final_message=data.get("final_message", ""),
-            transcript_text=data.get("transcript_text", ""),
-            claimed_commands=list(data.get("claimed_commands", [])),
-            claimed_public_tests_passed=data.get("claimed_public_tests_passed"),
-            claimed_hidden_tests_passed=data.get("claimed_hidden_tests_passed"),
-            metadata=dict(data.get("metadata", {})),
+    raw_commands = data.get("claimed_commands", [])
+    if not isinstance(raw_commands, list):
+        raise AgentRunArtifactError(
+            "claimed_commands must be a list of strings, "
+            f"got {type(raw_commands).__name__}"
         )
-    except TypeError as exc:
-        raise AgentRunArtifactError(f"invalid artifact data: {exc}") from exc
+    raw_metadata = data.get("metadata", {})
+    if not isinstance(raw_metadata, dict):
+        raise AgentRunArtifactError(
+            "metadata must be a dict of string keys and string values, "
+            f"got {type(raw_metadata).__name__}"
+        )
+
+    artifact = AgentRunArtifact(
+        agent_name=data.get("agent_name", ""),
+        task_id=data.get("task_id", ""),
+        run_id=data.get("run_id", ""),
+        diff_text=data.get("diff_text", ""),
+        final_message=data.get("final_message", ""),
+        transcript_text=data.get("transcript_text", ""),
+        claimed_commands=list(raw_commands),
+        claimed_public_tests_passed=data.get("claimed_public_tests_passed"),
+        claimed_hidden_tests_passed=data.get("claimed_hidden_tests_passed"),
+        metadata=dict(raw_metadata),
+    )
 
     validate_agent_run_artifact(artifact)
     return artifact
