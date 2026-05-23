@@ -19,13 +19,20 @@ from agenteval.core.schemas import BenchmarkPack, TaskSpec
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACK_DIR = REPO_ROOT / "benchmarks" / "python_bugfix_basic"
 
-# Tasks that ship with a fixture as of Week 4 Day 2.
-FIXTURE_TASK_IDS = ("bugfix_002", "bugfix_003", "bugfix_004", "bugfix_005")
+# Tasks that ship with a fixture as of Week 4 Day 4.
+FIXTURE_TASK_IDS = (
+    "bugfix_001",
+    "bugfix_002",
+    "bugfix_003",
+    "bugfix_004",
+    "bugfix_005",
+)
 
 # Per-task source-file and function-name expectations. The mapping mirrors
 # the layout suggested in the task spec — one source file per fixture,
 # named after the function it exposes.
 TASK_SOURCE_FILES: dict[str, tuple[str, str]] = {
+    "bugfix_001": ("sum_range.py", "sum_range"),
     "bugfix_002": ("safe_average.py", "safe_average"),
     "bugfix_003": ("normalize_name.py", "normalize_name"),
     "bugfix_004": ("count_words.py", "count_words"),

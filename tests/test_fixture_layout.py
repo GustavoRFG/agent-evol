@@ -220,7 +220,13 @@ def test_resolve_pack_layouts_include_missing_returns_existing_fixtures(
         pack, project_root=REPO_ROOT, include_missing=True
     )
     resolved_ids = [layout.task_id for layout in layouts]
-    for task_id in ("bugfix_002", "bugfix_003", "bugfix_004", "bugfix_005"):
+    for task_id in (
+        "bugfix_001",
+        "bugfix_002",
+        "bugfix_003",
+        "bugfix_004",
+        "bugfix_005",
+    ):
         assert task_id in resolved_ids
 
 
@@ -235,18 +241,38 @@ def test_resolve_pack_layouts_preserves_task_order(pack: BenchmarkPack):
     assert indices == sorted(indices)
 
 
-def test_resolve_pack_layouts_default_raises_when_bugfix_001_is_missing(
+def test_resolve_pack_layouts_default_succeeds_for_full_pack(
     pack: BenchmarkPack,
 ):
-    # bugfix_001 ships without a repo fixture yet; the default (include
-    # missing fixtures disabled) must surface that as a FixtureLayoutError.
-    assert any(
-        task.task_id == "bugfix_001"
-        and not (REPO_ROOT / task.repo_path).is_dir()
-        for task in pack.tasks
-    ), "Precondition: bugfix_001 fixture is expected to be absent."
+    # As of Week 4 Day 4, every task in ``python_bugfix_basic`` ships with
+    # an on-disk repo fixture, so the default (``include_missing=False``)
+    # must resolve every task without raising.
+    layouts = resolve_pack_fixture_layouts(pack, project_root=REPO_ROOT)
+    assert len(layouts) >= 5
+    resolved_ids = [layout.task_id for layout in layouts]
+    assert resolved_ids == [task.task_id for task in pack.tasks]
+
+
+def test_resolve_pack_layouts_default_still_raises_for_missing_fixture(
+    tmp_path: Path,
+):
+    # The ``include_missing=False`` default must still surface absent
+    # fixtures as ``FixtureLayoutError``; we synthesize a tiny pack with a
+    # ghost task to keep that contract covered now that the shipped pack
+    # is complete.
+    pack_with_ghost = BenchmarkPack(
+        name="ghost_pack",
+        version="0.0.1",
+        tasks=[
+            TaskSpec(
+                task_id="ghost",
+                title="Ghost task",
+                repo_path="repos/ghost",
+            ),
+        ],
+    )
     with pytest.raises(FixtureLayoutError):
-        resolve_pack_fixture_layouts(pack, project_root=REPO_ROOT)
+        resolve_pack_fixture_layouts(pack_with_ghost, project_root=tmp_path)
 
 
 def test_resolve_pack_layouts_does_not_mutate_pack(pack: BenchmarkPack):
