@@ -106,6 +106,83 @@ def copy_fixture_to_workspace(
     return destination
 
 
+def _validate_node_selection(
+    *, task_id: str, node_ids: list[str], test_kind: str
+) -> None:
+    if test_kind not in _VALID_TEST_KINDS:
+        raise TestHarnessError(
+            f"Invalid test_kind '{test_kind}'; expected one of "
+            f"{_VALID_TEST_KINDS}."
+        )
+    if not node_ids:
+        raise TestHarnessError(
+            f"No {test_kind} test node IDs provided for task "
+            f"'{task_id}'; cannot run pytest with an empty selection."
+        )
+
+
+def run_pytest_nodes_in_workspace(
+    *,
+    task_id: str,
+    node_ids: list[str],
+    test_kind: str,
+    workspace_path: str | Path,
+    timeout_seconds: int = 30,
+) -> PytestRunResult:
+    """Run pytest node IDs in an *already-copied* workspace directory.
+
+    This is the low-level subprocess call. Unlike :func:`run_pytest_nodes`,
+    it does not copy the fixture — callers are responsible for preparing
+    ``workspace_path`` (e.g. via :func:`copy_fixture_to_workspace` followed
+    by :func:`apply_patch_to_workspace`). Useful for the
+    "copy, patch, run tests" flow where a single workspace is reused for
+    both kinds of tests so the patch only has to be applied once.
+    """
+    _validate_node_selection(
+        task_id=task_id, node_ids=node_ids, test_kind=test_kind
+    )
+
+    workspace = Path(workspace_path)
+    if not workspace.is_dir():
+        raise TestHarnessError(
+            f"Workspace path does not exist or is not a directory: {workspace}"
+        )
+
+    command = [sys.executable, "-m", "pytest", *list(node_ids)]
+
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TestHarnessError(
+            f"pytest timed out after {timeout_seconds}s while running "
+            f"{test_kind} tests for task '{task_id}' in {workspace}."
+        ) from exc
+    except OSError as exc:
+        raise TestHarnessError(
+            f"Failed to launch pytest for task '{task_id}' in "
+            f"{workspace}: {exc}"
+        ) from exc
+
+    return PytestRunResult(
+        task_id=task_id,
+        test_kind=test_kind,
+        node_ids=list(node_ids),
+        passed=completed.returncode == 0,
+        exit_code=completed.returncode,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+        command=command,
+        workspace_path=str(workspace),
+    )
+
+
 def run_pytest_nodes(
     *,
     task: TaskSpec,
@@ -132,51 +209,16 @@ def run_pytest_nodes(
     The workspace copy is intentionally left on disk so callers can inspect
     it; pass a ``tmp_path`` so pytest cleans it up automatically.
     """
-    if test_kind not in _VALID_TEST_KINDS:
-        raise TestHarnessError(
-            f"Invalid test_kind '{test_kind}'; expected one of "
-            f"{_VALID_TEST_KINDS}."
-        )
-    if not node_ids:
-        raise TestHarnessError(
-            f"No {test_kind} test node IDs provided for task "
-            f"'{task.task_id}'; cannot run pytest with an empty selection."
-        )
-
+    _validate_node_selection(
+        task_id=task.task_id, node_ids=node_ids, test_kind=test_kind
+    )
     workspace = copy_fixture_to_workspace(layout, workspace_root)
-
-    command = [sys.executable, "-m", "pytest", *list(node_ids)]
-
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise TestHarnessError(
-            f"pytest timed out after {timeout_seconds}s while running "
-            f"{test_kind} tests for task '{task.task_id}' in {workspace}."
-        ) from exc
-    except OSError as exc:
-        raise TestHarnessError(
-            f"Failed to launch pytest for task '{task.task_id}' in "
-            f"{workspace}: {exc}"
-        ) from exc
-
-    return PytestRunResult(
+    return run_pytest_nodes_in_workspace(
         task_id=task.task_id,
+        node_ids=node_ids,
         test_kind=test_kind,
-        node_ids=list(node_ids),
-        passed=completed.returncode == 0,
-        exit_code=completed.returncode,
-        stdout=completed.stdout or "",
-        stderr=completed.stderr or "",
-        command=command,
-        workspace_path=str(workspace),
+        workspace_path=workspace,
+        timeout_seconds=timeout_seconds,
     )
 
 
