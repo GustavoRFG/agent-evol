@@ -74,6 +74,12 @@ from agenteval.agent_runs.verified_comparison import (
     build_verified_comparison_report_from_agent_artifacts,
     render_verified_comparison_markdown_from_agent_artifacts,
 )
+from agenteval.agent_runs.verified_demo_persistence import (
+    VerifiedDemoPersistenceError,
+    save_text_file,
+    save_verified_comparison_with_claims_markdown,
+    save_verified_demo_outputs,
+)
 from agenteval.agent_runs.verified_markdown import (
     VerifiedMarkdownError,
     build_and_render_verified_comparison_with_claims_markdown,
@@ -105,6 +111,7 @@ __all__ = [
     "IngestedAgentRun",
     "VerifiedAgentRunComparisonError",
     "VerifiedAgentRunReportingError",
+    "VerifiedDemoPersistenceError",
     "VerifiedMarkdownError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
@@ -141,6 +148,9 @@ __all__ = [
     "render_verified_comparison_with_claims_markdown",
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
+    "save_text_file",
+    "save_verified_comparison_with_claims_markdown",
+    "save_verified_demo_outputs",
     "summarize_agent_claim_reliability",
     "validate_agent_run_artifact",
     "verify_agent_run_artifact",
