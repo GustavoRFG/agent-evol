@@ -58,6 +58,14 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Design document
+
+For an end-to-end synthesis of the framework — problem statement, design
+goals, architecture, controlled execution model, verified evaluation
+pipeline, claim analysis, reporting, CI, failure modes handled, current
+limitations, and future work — see
+[`docs/design_of_robust_ai_coding_evaluation_framework.md`](docs/design_of_robust_ai_coding_evaluation_framework.md).
+
 ## Continuous integration
 
 GitHub Actions runs the full pytest suite on every `push` and `pull_request`.
