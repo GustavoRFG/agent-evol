@@ -52,6 +52,12 @@ from agenteval.agent_runs.verification import (
     verify_ingested_agent_run,
     verify_ingested_agent_runs,
 )
+from agenteval.agent_runs.verified_reporting import (
+    VerifiedAgentRunReportingError,
+    build_verified_run_report_from_agent_artifacts,
+    build_verified_run_reports_from_agent_artifact_dir,
+    build_verified_run_reports_from_agent_artifacts,
+)
 
 __all__ = [
     "AgentRunArtifact",
@@ -63,6 +69,7 @@ __all__ = [
     "AgentRunReportingError",
     "AgentRunVerificationError",
     "IngestedAgentRun",
+    "VerifiedAgentRunReportingError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
     "build_evaluation_result_from_ingested_run",
@@ -72,6 +79,9 @@ __all__ = [
     "build_run_report_from_agent_artifacts",
     "build_run_reports_from_agent_artifact_dir",
     "build_run_reports_from_agent_artifacts",
+    "build_verified_run_report_from_agent_artifacts",
+    "build_verified_run_reports_from_agent_artifact_dir",
+    "build_verified_run_reports_from_agent_artifacts",
     "discover_agent_run_artifact_paths",
     "ingest_agent_run_artifact",
     "ingest_agent_run_artifacts",
