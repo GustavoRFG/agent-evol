@@ -58,6 +58,15 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Continuous integration
+
+GitHub Actions runs the full pytest suite on every `push` and `pull_request`.
+The workflow (`.github/workflows/ci.yml`) installs the package with its `dev`
+extras on Python 3.11 (the project's minimum supported version) and runs
+`python -m pytest`. It exists to protect the evaluation framework from
+regressions; it does not execute real coding agents, hit any external
+APIs/networks, or upload artifacts to third-party services.
+
 ## Project layout
 
 ```text
