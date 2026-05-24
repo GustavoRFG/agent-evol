@@ -27,6 +27,7 @@ from agenteval.agent_runs.claim_report import (
     build_claim_analysis_report,
     build_claim_analysis_report_from_artifacts_and_results,
     render_claim_analysis_report_markdown,
+    summarize_agent_claim_reliability,
 )
 from agenteval.agent_runs.discovery import (
     AgentRunDiscoveryError,
@@ -128,6 +129,7 @@ __all__ = [
     "render_verified_comparison_markdown_from_agent_artifacts",
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
+    "summarize_agent_claim_reliability",
     "validate_agent_run_artifact",
     "verify_agent_run_artifact",
     "verify_agent_run_artifacts",

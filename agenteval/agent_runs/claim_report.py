@@ -37,6 +37,11 @@ class AgentClaimRollup:
     ``public_mismatches`` + ``hidden_mismatches`` totals, and 2 to
     ``overclaims``. ``mismatch_run_ids`` is the deduplicated, order-preserved
     list of run_ids with at least one mismatched bucket.
+
+    The ``*_rate`` and ``claim_reliability`` properties are derived,
+    informational metrics — they do not affect scoring or comparison ranking
+    and return ``None`` when the relevant denominator is zero. No rounding is
+    applied at the data-model layer; rendering decides display formatting.
     """
 
     agent_name: str
@@ -50,6 +55,50 @@ class AgentClaimRollup:
     overclaims: int = 0
     underclaims: int = 0
     mismatch_run_ids: list[str] = field(default_factory=list)
+
+    @property
+    def explicit_claims(self) -> int:
+        """Number of bucket-level explicit claims (matches + mismatches)."""
+        return self.matching_claims + self.mismatching_claims
+
+    @property
+    def claim_reliability(self) -> float | None:
+        """Fraction of explicit claims that matched verified outcomes."""
+        explicit = self.explicit_claims
+        if explicit <= 0:
+            return None
+        return self.matching_claims / explicit
+
+    @property
+    def mismatch_rate(self) -> float | None:
+        """Fraction of explicit claims that disagreed with verified outcomes."""
+        explicit = self.explicit_claims
+        if explicit <= 0:
+            return None
+        return self.mismatching_claims / explicit
+
+    @property
+    def overclaim_rate(self) -> float | None:
+        """Fraction of explicit claims that overclaimed (claimed pass, was fail)."""
+        explicit = self.explicit_claims
+        if explicit <= 0:
+            return None
+        return self.overclaims / explicit
+
+    @property
+    def underclaim_rate(self) -> float | None:
+        """Fraction of explicit claims that underclaimed (claimed fail, was pass)."""
+        explicit = self.explicit_claims
+        if explicit <= 0:
+            return None
+        return self.underclaims / explicit
+
+    @property
+    def no_claim_rate(self) -> float | None:
+        """Fraction of results in which the agent made no claim at all."""
+        if self.total_results <= 0:
+            return None
+        return self.results_with_no_claim / self.total_results
 
 
 @dataclass
@@ -237,6 +286,46 @@ def build_claim_analysis_report_from_artifacts_and_results(
     return build_claim_analysis_report(summaries)
 
 
+def format_optional_rate(value: float | None) -> str:
+    """Render a 0–1 rate as a percentage with one decimal, or ``"n/a"``.
+
+    ``None`` (the "no denominator" sentinel used throughout the rollup
+    properties) is rendered as ``"n/a"`` so the table stays readable.
+    """
+    if value is None:
+        return "n/a"
+    return f"{value * 100:.1f}%"
+
+
+def summarize_agent_claim_reliability(rollup: AgentClaimRollup) -> str:
+    """Return a short human-readable sentence about one agent's claim reliability.
+
+    Examples:
+        * ``"No explicit claims were made."``
+        * ``"Claims matched verified outcomes 100.0% of the time."``
+        * ``"Claims mismatched verified outcomes 50.0% of the time, with 2 overclaims."``
+    """
+    if not isinstance(rollup, AgentClaimRollup):
+        raise ClaimReportError(
+            f"rollup must be an AgentClaimRollup, got {type(rollup).__name__}"
+        )
+    if rollup.explicit_claims <= 0:
+        return "No explicit claims were made."
+    reliability = rollup.claim_reliability
+    if rollup.mismatching_claims == 0:
+        return (
+            f"Claims matched verified outcomes "
+            f"{format_optional_rate(reliability)} of the time."
+        )
+    mismatch_rate = rollup.mismatch_rate
+    return (
+        f"Claims mismatched verified outcomes "
+        f"{format_optional_rate(mismatch_rate)} of the time, "
+        f"with {rollup.overclaims} overclaim"
+        f"{'s' if rollup.overclaims != 1 else ''}."
+    )
+
+
 def _format_run_ids(run_ids: list[str], limit: int = 5) -> str:
     if not run_ids:
         return "—"
@@ -278,9 +367,14 @@ def render_claim_analysis_report_markdown(
     else:
         lines.append(
             "| Agent | Total | With claims | No claims | Mismatches | "
-            "Overclaims | Underclaims | Public mism. | Hidden mism. |"
+            "Overclaims | Underclaims | Public mism. | Hidden mism. | "
+            "Reliability | Mismatch rate | Overclaim rate | "
+            "Underclaim rate | No-claim rate |"
         )
-        lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        lines.append(
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | "
+            "---: | ---: | ---: | ---: | ---: |"
+        )
         for name, rollup in report.rollups_by_agent.items():
             lines.append(
                 "| "
@@ -295,6 +389,11 @@ def render_claim_analysis_report_markdown(
                         str(rollup.underclaims),
                         str(rollup.public_mismatches),
                         str(rollup.hidden_mismatches),
+                        format_optional_rate(rollup.claim_reliability),
+                        format_optional_rate(rollup.mismatch_rate),
+                        format_optional_rate(rollup.overclaim_rate),
+                        format_optional_rate(rollup.underclaim_rate),
+                        format_optional_rate(rollup.no_claim_rate),
                     ]
                 )
                 + " |"
@@ -330,5 +429,7 @@ __all__ = [
     "ClaimReportError",
     "build_claim_analysis_report",
     "build_claim_analysis_report_from_artifacts_and_results",
+    "format_optional_rate",
     "render_claim_analysis_report_markdown",
+    "summarize_agent_claim_reliability",
 ]
