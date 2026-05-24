@@ -52,6 +52,12 @@ from agenteval.agent_runs.verification import (
     verify_ingested_agent_run,
     verify_ingested_agent_runs,
 )
+from agenteval.agent_runs.verified_comparison import (
+    VerifiedAgentRunComparisonError,
+    build_verified_comparison_report_from_agent_artifact_dir,
+    build_verified_comparison_report_from_agent_artifacts,
+    render_verified_comparison_markdown_from_agent_artifacts,
+)
 from agenteval.agent_runs.verified_reporting import (
     VerifiedAgentRunReportingError,
     build_verified_run_report_from_agent_artifacts,
@@ -69,6 +75,7 @@ __all__ = [
     "AgentRunReportingError",
     "AgentRunVerificationError",
     "IngestedAgentRun",
+    "VerifiedAgentRunComparisonError",
     "VerifiedAgentRunReportingError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
@@ -79,6 +86,8 @@ __all__ = [
     "build_run_report_from_agent_artifacts",
     "build_run_reports_from_agent_artifact_dir",
     "build_run_reports_from_agent_artifacts",
+    "build_verified_comparison_report_from_agent_artifact_dir",
+    "build_verified_comparison_report_from_agent_artifacts",
     "build_verified_run_report_from_agent_artifacts",
     "build_verified_run_reports_from_agent_artifact_dir",
     "build_verified_run_reports_from_agent_artifacts",
@@ -90,6 +99,7 @@ __all__ = [
     "load_agent_run_artifacts_with_paths",
     "make_agent_run_id",
     "parse_patch_summary_from_artifact",
+    "render_verified_comparison_markdown_from_agent_artifacts",
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
     "validate_agent_run_artifact",
