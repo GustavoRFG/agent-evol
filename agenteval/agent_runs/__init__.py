@@ -13,6 +13,13 @@ from agenteval.agent_runs.artifacts import (
     make_agent_run_id,
     validate_agent_run_artifact,
 )
+from agenteval.agent_runs.claim_analysis import (
+    ClaimAnalysisError,
+    ClaimVerificationSummary,
+    build_claim_verification_summaries,
+    build_claim_verification_summary,
+    render_claim_verification_summary_markdown,
+)
 from agenteval.agent_runs.discovery import (
     AgentRunDiscoveryError,
     discover_agent_run_artifact_paths,
@@ -74,11 +81,15 @@ __all__ = [
     "AgentRunPersistenceError",
     "AgentRunReportingError",
     "AgentRunVerificationError",
+    "ClaimAnalysisError",
+    "ClaimVerificationSummary",
     "IngestedAgentRun",
     "VerifiedAgentRunComparisonError",
     "VerifiedAgentRunReportingError",
     "agent_run_artifact_from_dict",
     "agent_run_artifact_to_dict",
+    "build_claim_verification_summaries",
+    "build_claim_verification_summary",
     "build_evaluation_result_from_ingested_run",
     "build_evaluation_results_from_agent_artifacts",
     "build_evaluation_results_from_ingested_runs",
@@ -99,6 +110,7 @@ __all__ = [
     "load_agent_run_artifacts_with_paths",
     "make_agent_run_id",
     "parse_patch_summary_from_artifact",
+    "render_claim_verification_summary_markdown",
     "render_verified_comparison_markdown_from_agent_artifacts",
     "save_agent_run_artifact",
     "save_agent_run_artifact_folder",
