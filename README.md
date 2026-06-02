@@ -58,6 +58,26 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## EvoForge evaluation export
+
+AgentEval Forge can produce a native, hash-bound external judgment for an
+**EvoForge episode** and let EvoForge attach it for governed promotion:
+
+```powershell
+python -m agenteval.cli export-evoforge-evaluation `
+  --evoforge-run <run-dir> `
+  --output <evaluation-json>
+```
+
+The exporter reads a persisted EvoForge episode, verifies its run / trace /
+artifact hashes (fail-closed), judges the grounded trace evidence
+*independently* across correctness, safety, minimality, evidence quality, and an
+overall score, and writes a report compatible with EvoForge's `attach-agenteval`
+command (schema `0.1`). It evaluates persisted evidence only — it never executes
+`commands.log`, applies `patch.diff`, reruns tests, modifies the episode, or
+trusts EvoForge's local `eval.json` as its verdict. See
+[`docs/evoforge_evaluation_export.md`](docs/evoforge_evaluation_export.md).
+
 ## Design document
 
 For an end-to-end synthesis of the framework — problem statement, design
