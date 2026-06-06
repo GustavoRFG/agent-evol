@@ -1,0 +1,36 @@
+{
+  "evaluation_id": "eval_run_2026_06_06_001",
+  "mode": "evidence_review",
+  "evidence_level": "self_reported_execution_evidence",
+  "verdict": "requires_review",
+  "scores": {
+    "task_alignment": 0.7,
+    "patch_minimality": 0.91,
+    "evidence_quality": 0.6,
+    "safety_signal": 0.88
+  },
+  "findings": [
+    {
+      "severity": "warning",
+      "code": "EXECUTION_NOT_INDEPENDENTLY_VERIFIED",
+      "message": "Execution evidence was supplied by the caller and was not reproduced by AgentEval Forge."
+    }
+  ],
+  "claims": {
+    "tests_claimed_passed": true,
+    "evidence_consistent_with_claim": true,
+    "independently_verified": false
+  },
+  "integrity": {
+    "hash_manifest_supplied": false,
+    "hashes_verified": false
+  },
+  "human_review": {
+    "recommended": true,
+    "reasons": [
+      "Execution was not independently reproduced.",
+      "Mode A evidence review cannot guarantee code correctness.",
+      "EXECUTION_NOT_INDEPENDENTLY_VERIFIED"
+    ]
+  }
+}

@@ -1,44 +1,43 @@
 # AgentEval Forge
 
-AgentEval Forge is a practical Python framework for **evaluating agentic coding
-systems** — autonomous agents that read, write, and modify code to complete
-software engineering tasks.
+AgentEval Forge is an independent evaluation layer for agentic coding systems.
+It reviews external run evidence, validates integrity, analyzes patches in a
+read-only mode, and produces audit-ready structured verdicts. It can also
+verify patches by controlled execution in the existing verified-execution path;
+that path is distinct from public evidence review and requires controlled
+workspaces.
 
-It is designed to evaluate agents such as **Claude Code**, **Codex**, and
-**ForgeAgent**: feeding them benchmark tasks, capturing their run transcripts and
-patches, running tests, and producing structured scores and failure analyses.
+AgentEval Forge evaluates runs from any coding agent or internal pipeline via a
+generic input contract. Claude Code, Codex, ForgeAgent, EvoForge, and private
+agent pipelines are clients that can submit evidence; EvoForge is an optional
+integration, not the evaluator's input model.
 
-## Why
+## Product modes
 
-Coding agents are easy to demo and hard to measure. AgentEval Forge aims to make
-agent quality *comparable* and *reproducible* by treating each evaluation as
-structured data: a task spec, an agent run, a patch summary, test results, a
-numeric score, and a taxonomy of weaknesses.
+- **Mode A - Evidence Review:** reads a submitted evidence package, validates
+  consistency and integrity, analyzes scope/minimality/safety/task alignment,
+  and returns a structured verdict. It executes nothing and is safe to expose as
+  an independent, audit-friendly review of coding-agent run evidence.
+- **Mode B - Sandboxed Verified Execution:** applies patches in controlled
+  workspaces and runs tests independently. This stronger guarantee already
+  exists as an internal verified-execution path, but exposing it publicly
+  requires dedicated sandbox infrastructure.
 
-## Planned scope
+Mode A never claims submitted code is guaranteed to work. Its promise is:
 
-Eventually the framework should support:
+> Independent, audit-friendly review of coding-agent run evidence.
 
-- Benchmark task definitions
-- Agent run transcripts and command logs
-- Patch summaries (changed / added / deleted files, diffs)
-- Public and hidden test results
-- Structured numeric scoring
-- A failure taxonomy (weakness codes)
-- Evaluation reports
+## Current capabilities
 
-## First milestone
-
-This repository starts as a **minimal foundation only**. The first milestone is
-deliberately small:
-
-1. **Schemas** — core dataclasses and enums describing tasks, runs, patches,
-   evaluation results, and weakness codes (`agenteval/core/schemas.py`).
-2. **Scoring** — a small, understandable scoring helper that rewards passed
-   tests and penalizes weaknesses (`agenteval/core/scoring.py`).
-3. **Tests** — pytest tests covering the schemas and scoring logic.
-
-No web app, dashboard, database, agent runner, or CI workflow is included yet.
+- Generic V1 evidence-review input contract (`schema_version: "1.0"`)
+- EvoForge evidence export integration as an optional dialect
+- Core dataclasses for tasks, runs, patches, results, and weakness codes
+- Unified-diff patch parsing and patch summary reporting
+- Claim analysis and claim reliability reporting
+- Run reports, comparison reports, and markdown rendering
+- Controlled patch workspace and pytest harness for verified execution
+- CLI entry points for existing workflows
+- GitHub Actions CI running the pytest suite
 
 ## Requirements
 
@@ -58,9 +57,22 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Generic evidence review
+
+Any coding-agent pipeline can submit the generic V1 evidence package described
+in [`docs/generic_evidence_review_v1.md`](docs/generic_evidence_review_v1.md).
+The generic adapter validates the public contract, parses only unified diffs,
+classifies the evidence level, and maps the package into the existing
+`TaskSpec`, `AgentRun`, `PatchSummary`, `AgentRunArtifact`, and unverified
+evaluation-result path.
+
+Mode A treats caller-supplied test output as evidence, not proof. Claims such as
+"all tests passed" are never promoted into verified outcomes unless Mode B
+independently executes the tests.
+
 ## EvoForge evaluation export
 
-AgentEval Forge can produce a native, hash-bound external judgment for an
+AgentEval Forge can also produce a native, hash-bound external judgment for an
 **EvoForge episode** and let EvoForge attach it for governed promotion:
 
 ```powershell
@@ -73,17 +85,17 @@ The exporter reads a persisted EvoForge episode, verifies its run / trace /
 artifact hashes (fail-closed), judges the grounded trace evidence
 *independently* across correctness, safety, minimality, evidence quality, and an
 overall score, and writes a report compatible with EvoForge's `attach-agenteval`
-command (schema `0.1`). It evaluates persisted evidence only — it never executes
+command (schema `0.1`). It evaluates persisted evidence only: it never executes
 `commands.log`, applies `patch.diff`, reruns tests, modifies the episode, or
 trusts EvoForge's local `eval.json` as its verdict. See
 [`docs/evoforge_evaluation_export.md`](docs/evoforge_evaluation_export.md).
 
 ## Design document
 
-For an end-to-end synthesis of the framework — problem statement, design
-goals, architecture, controlled execution model, verified evaluation
-pipeline, claim analysis, reporting, CI, failure modes handled, current
-limitations, and future work — see
+For an end-to-end synthesis of the framework - problem statement, design goals,
+architecture, controlled execution model, verified evaluation pipeline, claim
+analysis, reporting, CI, failure modes handled, current limitations, and future
+work - see
 [`docs/design_of_robust_ai_coding_evaluation_framework.md`](docs/design_of_robust_ai_coding_evaluation_framework.md).
 
 ## Continuous integration
@@ -100,10 +112,13 @@ APIs/networks, or upload artifacts to third-party services.
 ```text
 agenteval-forge/
   agenteval/
-    core/
-      schemas.py    # dataclasses and enums
-      scoring.py    # scoring helpers
+    agent_runs/       # external run artifacts, ingestion, reporting
+    core/             # stable dataclasses and scoring helpers
+    execution/        # controlled workspace and pytest harness
+    ingest/           # generic public evidence-review adapters
+    integrations/     # optional client dialects such as EvoForge
+    patches/          # unified-diff parsing and patch summaries
+  docs/
+  examples/
   tests/
-    test_schemas.py
-    test_scoring.py
 ```
