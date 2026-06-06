@@ -70,6 +70,95 @@ Mode A treats caller-supplied test output as evidence, not proof. Claims such as
 "all tests passed" are never promoted into verified outcomes unless Mode B
 independently executes the tests.
 
+## Paid x402 evidence-review endpoint
+
+AgentEval Forge can expose Mode A evidence review as a paid x402 endpoint
+without merging the Python evaluator into the payment service. The payment plane
+is a small TypeScript/Express seller using `@x402/express`; after payment it
+calls the Python boundary `python -m agenteval.ingest.serve` and returns the
+verdict JSON verbatim.
+
+The paid route is:
+
+```text
+POST /paid/evaluate-agent-run
+```
+
+Build-phase defaults:
+
+- network: Base Sepolia (`eip155:84532`)
+- asset: USDC
+- price: `$0.01` / `10000` atomic units
+- body limit: `256kb`
+- mainnet: opt-in only with `X402_USE_MAINNET=1` and CDP facilitator credentials
+
+Invalid generic evidence is validated before the x402 middleware and returns
+HTTP `400`, so malformed input is rejected before settlement in the pilot. A
+valid unpaid request receives HTTP `402`; a paid request returns the Mode A
+verdict. The service never applies submitted patches or runs submitted tests.
+
+Copy-pasteable local run recipe:
+
+```powershell
+cd D:\agenteval-forge
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+
+npm --prefix paid-service install
+Copy-Item paid-service\.env.example paid-service\.env
+notepad paid-service\.env
+```
+
+Set `SELLER_RECEIVER_ADDRESS` to a Base wallet controlled by the seller. For
+the paid smoke only, set `BUYER_PRIVATE_KEY` to a distinct funded Base Sepolia
+buyer wallet. Leave `X402_USE_MAINNET=0` for the default testnet flow.
+
+Start the paid seller:
+
+```powershell
+npm --prefix paid-service run dev
+```
+
+From another terminal, confirm the unpaid challenge without printing raw
+payment headers:
+
+```powershell
+cd D:\agenteval-forge
+
+curl.exe -s -o NUL -w "%{http_code}`n" `
+  -H "Content-Type: application/json" `
+  --data-binary "@examples/generic_evidence_review_request.json" `
+  http://localhost:4081/paid/evaluate-agent-run
+```
+
+Expected:
+
+```text
+402
+```
+
+Run one Base Sepolia paid smoke:
+
+```powershell
+npm --prefix paid-service run smoke:paid
+```
+
+Expected sanitized result:
+
+```text
+RESULT: AGENTEVAL_PAID_ENDPOINT_SMOKE_PASSED
+unpaid HTTP: 402
+paid HTTP: 200
+network: eip155:84532
+asset: USDC
+amountAtomic: 10000
+amountUsd: 0.01
+mode: evidence_review
+verified_pass claimed: No
+```
+
 ## EvoForge evaluation export
 
 AgentEval Forge can also produce a native, hash-bound external judgment for an
@@ -118,6 +207,7 @@ agenteval-forge/
     ingest/           # generic public evidence-review adapters
     integrations/     # optional client dialects such as EvoForge
     patches/          # unified-diff parsing and patch summaries
+  paid-service/        # x402 seller for the paid Mode A endpoint
   docs/
   examples/
   tests/

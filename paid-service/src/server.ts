@@ -1,0 +1,539 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { getAuthHeaders } from "@coinbase/cdp-sdk/auth";
+import { HTTPFacilitatorClient, type FacilitatorConfig } from "@x402/core/server";
+import type { RouteConfig } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { config as loadDotenv } from "dotenv";
+import express, { type NextFunction, type Request, type Response } from "express";
+
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(moduleDir, "..", "..");
+loadDotenv({ path: resolve(repoRoot, "paid-service", ".env"), quiet: true });
+
+type Caip2Network = `${string}:${string}`;
+
+const TESTNET_NETWORK = "eip155:84532" as const;
+const MAINNET_NETWORK = "eip155:8453" as const;
+const TESTNET_FACILITATOR_URL = "https://x402.org/facilitator" as const;
+const MAINNET_FACILITATOR_URL =
+  "https://api.cdp.coinbase.com/platform/v2/x402" as const;
+
+const PAID_ROUTE = "/paid/evaluate-agent-run" as const;
+const PAYMENT_ASSET = "USDC" as const;
+const PAYMENT_AMOUNT_ATOMIC = "10000" as const;
+const PAYMENT_AMOUNT_USD = "0.01" as const;
+const PAYMENT_PRICE_LABEL = "$0.01" as const;
+
+const PORT = Number.parseInt(process.env.PORT ?? "4081", 10);
+const NETWORK = (
+  process.env.X402_USE_MAINNET === "1" ? MAINNET_NETWORK : TESTNET_NETWORK
+) as Caip2Network;
+const FACILITATOR_URL =
+  NETWORK === MAINNET_NETWORK
+    ? MAINNET_FACILITATOR_URL
+    : TESTNET_FACILITATOR_URL;
+const BODY_LIMIT = process.env.EVALUATION_BODY_LIMIT ?? "256kb";
+const PYTHON_COMMAND = process.env.PYTHON_COMMAND ?? "python";
+const EVALUATOR_MODULE =
+  process.env.EVALUATOR_MODULE ?? "agenteval.ingest.serve";
+const EVALUATOR_TIMEOUT_MS = Number.parseInt(
+  process.env.EVALUATOR_TIMEOUT_MS ?? "20000",
+  10,
+);
+const EVALUATION_REVIEW_PRICE_USD =
+  process.env.EVALUATION_REVIEW_PRICE_USD ?? PAYMENT_PRICE_LABEL;
+const SELLER_RECEIVER_ADDRESS = process.env.SELLER_RECEIVER_ADDRESS ?? "";
+const SELLER_RECEIVER_ADDRESS_TYPED =
+  SELLER_RECEIVER_ADDRESS as `0x${string}`;
+
+interface FacilitatorEndpoint {
+  method: "GET" | "POST";
+  suffix: string;
+}
+
+const FACILITATOR_ENDPOINTS = {
+  verify: { method: "POST", suffix: "/verify" },
+  settle: { method: "POST", suffix: "/settle" },
+  supported: { method: "GET", suffix: "/supported" },
+} as const satisfies Record<string, FacilitatorEndpoint>;
+
+class EvaluatorBoundaryError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "EvaluatorBoundaryError";
+    this.code = code;
+  }
+}
+
+function createCdpFacilitatorConfig(
+  facilitatorUrl: string,
+  apiKeyId: string,
+  apiKeySecret: string,
+): FacilitatorConfig {
+  const base = new URL(facilitatorUrl);
+  const requestHost = base.host;
+  const basePath = base.pathname.replace(/\/+$/, "");
+
+  return {
+    url: facilitatorUrl,
+    createAuthHeaders: async () => {
+      const headersFor = (endpoint: FacilitatorEndpoint) =>
+        getAuthHeaders({
+          apiKeyId,
+          apiKeySecret,
+          requestMethod: endpoint.method,
+          requestHost,
+          requestPath: `${basePath}${endpoint.suffix}`,
+        });
+
+      const [verify, settle, supported] = await Promise.all([
+        headersFor(FACILITATOR_ENDPOINTS.verify),
+        headersFor(FACILITATOR_ENDPOINTS.settle),
+        headersFor(FACILITATOR_ENDPOINTS.supported),
+      ]);
+
+      return { verify, settle, supported };
+    },
+  };
+}
+
+function assertConfig(): void {
+  const problems: string[] = [];
+
+  if (!Number.isFinite(PORT) || PORT <= 0) {
+    problems.push("PORT must be a positive integer.");
+  }
+  if (!SELLER_RECEIVER_ADDRESS || !SELLER_RECEIVER_ADDRESS.startsWith("0x")) {
+    problems.push(
+      "SELLER_RECEIVER_ADDRESS must be a 0x-prefixed Base address.",
+    );
+  }
+  if (!EVALUATION_REVIEW_PRICE_USD.startsWith("$")) {
+    problems.push(
+      'EVALUATION_REVIEW_PRICE_USD must start with "$" (for example "$0.01").',
+    );
+  }
+  if (NETWORK === MAINNET_NETWORK) {
+    if (process.env.X402_USE_MAINNET !== "1") {
+      problems.push("Base mainnet requires X402_USE_MAINNET=1.");
+    }
+    if (!process.env.CDP_API_KEY_ID) {
+      problems.push("CDP_API_KEY_ID is required for the mainnet facilitator.");
+    }
+    if (!process.env.CDP_API_KEY_SECRET) {
+      problems.push(
+        "CDP_API_KEY_SECRET is required for the mainnet facilitator.",
+      );
+    }
+  }
+
+  if (problems.length > 0) {
+    console.error("[agenteval-paid-service] configuration problems:");
+    for (const problem of problems) console.error("  - " + problem);
+    process.exit(1);
+  }
+}
+
+function shortAddress(value: string): string {
+  if (value.length < 12) return "(configured)";
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function evaluatorEnv(): NodeJS.ProcessEnv {
+  const allow = new Set([
+    "COMSPEC",
+    "PATH",
+    "PATHEXT",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "VIRTUAL_ENV",
+    "WINDIR",
+  ]);
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && allow.has(key.toUpperCase())) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function parseBoundaryPayload(text: string): Record<string, unknown> {
+  try {
+    const payload = JSON.parse(text) as unknown;
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      return payload as Record<string, unknown>;
+    }
+  } catch {
+    // handled below
+  }
+  throw new EvaluatorBoundaryError(
+    "EVALUATOR_BAD_OUTPUT",
+    "evaluator returned invalid JSON",
+  );
+}
+
+async function callEvaluator(
+  payload: unknown,
+  options: { validateOnly?: boolean } = {},
+): Promise<Record<string, unknown>> {
+  const args = ["-m", EVALUATOR_MODULE];
+  if (options.validateOnly) args.push("--validate-only");
+
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(PYTHON_COMMAND, args, {
+      cwd: repoRoot,
+      env: evaluatorEnv(),
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (
+      fn: typeof resolvePromise | typeof rejectPromise,
+      value: Record<string, unknown> | Error,
+    ) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn(value as never);
+    };
+
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish(
+        rejectPromise,
+        new EvaluatorBoundaryError(
+          "EVALUATOR_TIMEOUT",
+          "evaluator timed out",
+        ),
+      );
+    }, EVALUATOR_TIMEOUT_MS);
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > 1024 * 1024) {
+        child.kill();
+        finish(
+          rejectPromise,
+          new EvaluatorBoundaryError(
+            "EVALUATOR_OUTPUT_TOO_LARGE",
+            "evaluator output exceeded limit",
+          ),
+        );
+      }
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk.slice(0, 4096);
+    });
+
+    child.on("error", (error) => {
+      finish(
+        rejectPromise,
+        new EvaluatorBoundaryError(
+          "EVALUATOR_START_FAILED",
+          error.message || "failed to start evaluator",
+        ),
+      );
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      try {
+        const result = parseBoundaryPayload(stdout);
+        if (code === 0) {
+          finish(resolvePromise, result);
+          return;
+        }
+
+        const error = result.error;
+        if (error && typeof error === "object") {
+          const record = error as Record<string, unknown>;
+          finish(
+            rejectPromise,
+            new EvaluatorBoundaryError(
+              typeof record.code === "string"
+                ? record.code
+                : "EVALUATOR_REJECTED_INPUT",
+              typeof record.message === "string"
+                ? record.message
+                : "invalid generic evidence package",
+            ),
+          );
+          return;
+        }
+
+        finish(
+          rejectPromise,
+          new EvaluatorBoundaryError(
+            "EVALUATOR_FAILED",
+            stderr ? "evaluator failed" : "evaluator failed without details",
+          ),
+        );
+      } catch (error) {
+        finish(rejectPromise, error as Error);
+      }
+    });
+
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+async function validateEvidencePayload(payload: unknown): Promise<void> {
+  await callEvaluator(payload, { validateOnly: true });
+}
+
+async function evaluateEvidencePayload(
+  payload: unknown,
+): Promise<Record<string, unknown>> {
+  return callEvaluator(payload);
+}
+
+function exactPaymentAccept(price: string): RouteConfig["accepts"] {
+  return [
+    {
+      scheme: "exact",
+      price,
+      network: NETWORK,
+      payTo: SELLER_RECEIVER_ADDRESS_TYPED,
+    },
+  ];
+}
+
+function bazaarDiscovery(): Record<string, unknown> {
+  return {
+    ...declareDiscoveryExtension({
+      bodyType: "json",
+      input: {
+        schema_version: "1.0",
+        run_id: "run_2026_06_06_001",
+        task: {
+          task_id: "optional-client-task-id",
+          prompt: "Fix the off-by-one bug in the range validation function.",
+        },
+        patch: {
+          format: "unified_diff",
+          text: "--- a/file.py\n+++ b/file.py\n@@ ...",
+        },
+      },
+      inputSchema: {
+        type: "object",
+        properties: {
+          schema_version: { const: "1.0" },
+          run_id: { type: "string", minLength: 1 },
+          task: {
+            type: "object",
+            properties: {
+              task_id: { type: "string" },
+              prompt: { type: "string", minLength: 1 },
+            },
+            required: ["prompt"],
+            additionalProperties: true,
+          },
+          patch: {
+            type: "object",
+            properties: {
+              format: { const: "unified_diff" },
+              text: { type: "string", minLength: 1 },
+            },
+            required: ["format", "text"],
+            additionalProperties: false,
+          },
+        },
+        required: ["schema_version", "run_id", "task", "patch"],
+        additionalProperties: true,
+      },
+      output: {
+        example: {
+          evaluation_id: "eval_run_2026_06_06_001",
+          mode: "evidence_review",
+          evidence_level: "self_reported_execution_evidence",
+          verdict: "requires_review",
+          scores: {
+            task_alignment: 0.82,
+            patch_minimality: 0.91,
+            evidence_quality: 0.63,
+            safety_signal: 0.88,
+          },
+          findings: [
+            {
+              severity: "warning",
+              code: "EXECUTION_NOT_INDEPENDENTLY_VERIFIED",
+              message:
+                "Execution evidence was supplied by the caller and was not reproduced by AgentEval Forge.",
+            },
+          ],
+          claims: {
+            tests_claimed_passed: true,
+            evidence_consistent_with_claim: true,
+            independently_verified: false,
+          },
+          integrity: {
+            hash_manifest_supplied: false,
+            hashes_verified: false,
+          },
+          human_review: {
+            recommended: true,
+            reasons: ["Execution was not independently reproduced."],
+          },
+        },
+        schema: {
+          type: "object",
+          properties: {
+            evaluation_id: { type: "string" },
+            mode: { const: "evidence_review" },
+            evidence_level: { type: "string" },
+            verdict: { type: "string" },
+            scores: { type: "object" },
+            findings: { type: "array" },
+            claims: { type: "object" },
+            integrity: { type: "object" },
+            human_review: { type: "object" },
+          },
+          required: [
+            "evaluation_id",
+            "mode",
+            "evidence_level",
+            "verdict",
+            "scores",
+            "findings",
+            "claims",
+            "integrity",
+            "human_review",
+          ],
+          additionalProperties: true,
+        },
+      },
+    }),
+    discoverable: true,
+  };
+}
+
+function paidRouteConfig(): RouteConfig {
+  return {
+    accepts: exactPaymentAccept(EVALUATION_REVIEW_PRICE_USD),
+    description:
+      "Independent, audit-friendly Mode A evidence review of coding-agent run evidence. " +
+      "Read-only: does not apply patches, run tests, or claim verified execution.",
+    mimeType: "application/json",
+    extensions: bazaarDiscovery(),
+  };
+}
+
+function createFacilitatorConfig(): FacilitatorConfig {
+  if (NETWORK === MAINNET_NETWORK) {
+    return createCdpFacilitatorConfig(
+      FACILITATOR_URL,
+      process.env.CDP_API_KEY_ID!,
+      process.env.CDP_API_KEY_SECRET!,
+    );
+  }
+  return { url: FACILITATOR_URL };
+}
+
+assertConfig();
+
+const facilitatorClient = new HTTPFacilitatorClient(createFacilitatorConfig());
+const resourceServer = new x402ResourceServer(facilitatorClient).register(
+  NETWORK,
+  new ExactEvmScheme(),
+);
+
+const paymentRoutes: Record<string, RouteConfig> = {
+  [`POST ${PAID_ROUTE}`]: paidRouteConfig(),
+};
+
+const app = express();
+app.use(express.json({ limit: BODY_LIMIT }));
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({
+    ok: true,
+    service: "agenteval-paid-evidence-review",
+    route: PAID_ROUTE,
+    mode: "evidence_review",
+    network: NETWORK,
+    asset: PAYMENT_ASSET,
+    amountAtomic: PAYMENT_AMOUNT_ATOMIC,
+    amountUsd: PAYMENT_AMOUNT_USD,
+  });
+});
+
+app.post(
+  PAID_ROUTE,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await validateEvidencePayload(req.body);
+      next();
+    } catch (error) {
+      if (error instanceof EvaluatorBoundaryError) {
+        res.status(400).json({
+          error: "invalid_generic_evidence",
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
+app.use(paymentMiddleware(paymentRoutes, resourceServer));
+
+app.post(PAID_ROUTE, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const verdict = await evaluateEvidencePayload(req.body);
+    res.status(200).json(verdict);
+  } catch (error) {
+    if (error instanceof EvaluatorBoundaryError) {
+      res.status(400).json({
+        error: "invalid_generic_evidence",
+        code: error.code,
+        message: error.message,
+      });
+      return;
+    }
+    next(error);
+  }
+});
+
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message =
+    err instanceof Error && "type" in err && err.type === "entity.too.large"
+      ? "request body exceeds configured limit"
+      : "internal_error";
+  const status = message === "internal_error" ? 500 : 413;
+  if (status === 500) {
+    console.error("[agenteval-paid-service] unhandled error");
+  }
+  res.status(status).json({ error: message });
+});
+
+app.listen(PORT, () => {
+  console.log(
+    `[agenteval-paid-service] listening on http://localhost:${PORT} ` +
+      `route=${PAID_ROUTE} mode=evidence_review network=${NETWORK} ` +
+      `${NETWORK === MAINNET_NETWORK ? "MAINNET" : "testnet"} ` +
+      `facilitator=${FACILITATOR_URL} price=${EVALUATION_REVIEW_PRICE_USD} ` +
+      `amountAtomic=${PAYMENT_AMOUNT_ATOMIC} payTo=${shortAddress(
+        SELLER_RECEIVER_ADDRESS,
+      )}`,
+  );
+});

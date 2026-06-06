@@ -25,3 +25,7 @@ htmlcov/
 Thumbs.db
 
 reports/generated/
+
+# Local x402 paid-service configuration
+paid-service/.env
+paid-service/node_modules/
