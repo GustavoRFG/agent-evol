@@ -14,6 +14,19 @@ const PAID_ROUTE = "/paid/evaluate-agent-run" as const;
 const TESTNET_NETWORK = "eip155:84532" as const;
 const TESTNET_USDC_ADDRESS =
   "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
+const MAINNET_NETWORK = "eip155:8453" as const;
+const MAINNET_USDC_ADDRESS =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+
+// Single source of truth for the active network. Testnet is the default; Base
+// mainnet is strictly opt-in via X402_USE_MAINNET=1. Every non-network safety
+// guard below applies identically on both networks.
+const USE_MAINNET = process.env.X402_USE_MAINNET === "1";
+const ACTIVE_NETWORK = USE_MAINNET ? MAINNET_NETWORK : TESTNET_NETWORK;
+const ACTIVE_USDC_ADDRESS = USE_MAINNET
+  ? MAINNET_USDC_ADDRESS
+  : TESTNET_USDC_ADDRESS;
+
 const PAYMENT_AMOUNT_ATOMIC = "10000" as const;
 const PAYMENT_AMOUNT_USD = "0.01" as const;
 const MAX_PAYMENT_BEARING_REQUESTS = 1;
@@ -83,17 +96,20 @@ function paymentAssetAddress(entry: AcceptEntry): string | undefined {
   });
 }
 
-function selectTestnetUsdcAccept(envelope: PaymentRequiredEnvelope): AcceptEntry {
+function selectUsdcAccept(
+  envelope: PaymentRequiredEnvelope,
+  network: string,
+  usdcAddress: string,
+): AcceptEntry {
   const accepts = envelope.accepts ?? [];
   const matching = accepts.filter((entry) => {
     return (
-      entry.network === TESTNET_NETWORK &&
-      paymentAssetAddress(entry)?.toLowerCase() ===
-        TESTNET_USDC_ADDRESS.toLowerCase()
+      entry.network === network &&
+      paymentAssetAddress(entry)?.toLowerCase() === usdcAddress.toLowerCase()
     );
   });
   if (matching.length === 0) {
-    throw new Error("No Base Sepolia USDC payment rail was advertised.");
+    throw new Error(`No USDC payment rail was advertised for ${network}.`);
   }
   return matching.reduce((a, b) => {
     const aUsd = Number.parseFloat(
@@ -154,8 +170,11 @@ async function loadExampleRequest(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.X402_USE_MAINNET === "1") {
-    throw new Error("Paid smoke refuses mainnet; unset X402_USE_MAINNET.");
+  if (USE_MAINNET) {
+    console.log(
+      "network mode: MAINNET — Base mainnet is a REAL-MONEY path; " +
+        "a successful run will move real USDC.",
+    );
   }
   if (!BUYER_PRIVATE_KEY.startsWith("0x") || BUYER_PRIVATE_KEY.length < 66) {
     throw new Error("BUYER_PRIVATE_KEY is required for paid smoke.");
@@ -187,8 +206,10 @@ async function main(): Promise<void> {
     throw new Error("Unpaid response did not include PAYMENT-REQUIRED.");
   }
 
-  const accept = selectTestnetUsdcAccept(
+  const accept = selectUsdcAccept(
     decodePaymentRequiredHeader(paymentRequired),
+    ACTIVE_NETWORK,
+    ACTIVE_USDC_ADDRESS,
   );
   const amountAtomic = accept.amount ?? accept.maxAmountRequired ?? "";
   const amountUsd = atomicUsdcToUsd(amountAtomic);
@@ -201,7 +222,7 @@ async function main(): Promise<void> {
   }
 
   const client = new x402Client();
-  registerExactEvmScheme(client, { signer, networks: [TESTNET_NETWORK] });
+  registerExactEvmScheme(client, { signer, networks: [ACTIVE_NETWORK] });
 
   const guard = createPaymentBearingGuard();
   const guardedFetch: typeof fetch = async (input, init) => {
@@ -234,7 +255,8 @@ async function main(): Promise<void> {
   console.log("RESULT: AGENTEVAL_PAID_ENDPOINT_SMOKE_PASSED");
   console.log(`unpaid HTTP: ${unpaidResponse.status}`);
   console.log(`paid HTTP: ${paidResponse.status}`);
-  console.log(`network: ${TESTNET_NETWORK}`);
+  console.log(`network mode: ${USE_MAINNET ? "MAINNET" : "testnet"}`);
+  console.log(`network: ${ACTIVE_NETWORK}`);
   console.log("asset: USDC");
   console.log(`amountAtomic: ${amountAtomic}`);
   console.log(`amountUsd: ${amountUsd}`);
