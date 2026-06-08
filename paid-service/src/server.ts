@@ -51,6 +51,19 @@ const SELLER_RECEIVER_ADDRESS = process.env.SELLER_RECEIVER_ADDRESS ?? "";
 const SELLER_RECEIVER_ADDRESS_TYPED =
   SELLER_RECEIVER_ADDRESS as `0x${string}`;
 
+// Public HTTPS base advertised to Bazaar discovery. When set (e.g. an ngrok
+// tunnel URL), the seller advertises this as the route `resource` so Bazaar
+// accepts it (Bazaar rejects non-https resources). When unset, behaviour is
+// unchanged: the x402 framework derives the resource from the request, i.e.
+// the local http://localhost:<PORT> default.
+const PUBLIC_RESOURCE_URL = (process.env.PUBLIC_RESOURCE_URL ?? "").replace(
+  /\/+$/,
+  "",
+);
+const ADVERTISED_RESOURCE_URL = PUBLIC_RESOURCE_URL
+  ? `${PUBLIC_RESOURCE_URL}${PAID_ROUTE}`
+  : undefined;
+
 interface FacilitatorEndpoint {
   method: "GET" | "POST";
   suffix: string;
@@ -118,6 +131,12 @@ function assertConfig(): void {
   if (!EVALUATION_REVIEW_PRICE_USD.startsWith("$")) {
     problems.push(
       'EVALUATION_REVIEW_PRICE_USD must start with "$" (for example "$0.01").',
+    );
+  }
+  if (PUBLIC_RESOURCE_URL && !PUBLIC_RESOURCE_URL.startsWith("https://")) {
+    problems.push(
+      'PUBLIC_RESOURCE_URL must start with "https://" when set ' +
+        "(Bazaar rejects non-https resources).",
     );
   }
   if (NETWORK === MAINNET_NETWORK) {
@@ -428,6 +447,10 @@ function bazaarDiscovery(): Record<string, unknown> {
 function paidRouteConfig(): RouteConfig {
   return {
     accepts: exactPaymentAccept(EVALUATION_REVIEW_PRICE_USD),
+    // When PUBLIC_RESOURCE_URL is set, advertise the public HTTPS resource so
+    // Bazaar can index it; when undefined, the framework falls back to the
+    // request-derived local URL (unchanged behaviour).
+    resource: ADVERTISED_RESOURCE_URL,
     description:
       "Independent, audit-friendly Mode A evidence review of coding-agent run evidence. " +
       "Read-only: does not apply patches, run tests, or claim verified execution.",
@@ -534,6 +557,7 @@ app.listen(PORT, () => {
       `facilitator=${FACILITATOR_URL} price=${EVALUATION_REVIEW_PRICE_USD} ` +
       `amountAtomic=${PAYMENT_AMOUNT_ATOMIC} payTo=${shortAddress(
         SELLER_RECEIVER_ADDRESS,
-      )}`,
+      )} ` +
+      `resource=${ADVERTISED_RESOURCE_URL ?? `http://localhost:${PORT}${PAID_ROUTE} (request-derived default)`}`,
   );
 });

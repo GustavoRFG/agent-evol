@@ -8,7 +8,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "..", "..");
-loadDotenv({ path: resolve(repoRoot, "paid-service", ".env"), quiet: true });
+loadDotenv({ path: resolve(repoRoot, "paid-service", ".env.smoke"), quiet: true });
 
 const PAID_ROUTE = "/paid/evaluate-agent-run" as const;
 const TESTNET_NETWORK = "eip155:84532" as const;
