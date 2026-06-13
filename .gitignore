@@ -30,3 +30,4 @@ reports/generated/
 paid-service/.env
 paid-service/node_modules/
 paid-service/.env.smoke
+paid-service/logs/

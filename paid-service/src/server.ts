@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAuthHeaders } from "@coinbase/cdp-sdk/auth";
@@ -10,6 +9,10 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { config as loadDotenv } from "dotenv";
 import express, { type NextFunction, type Request, type Response } from "express";
+import {
+  createAccessLogMiddleware,
+  markRequestError,
+} from "./http-access-log.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "..", "..");
@@ -28,6 +31,9 @@ const PAYMENT_ASSET = "USDC" as const;
 const PAYMENT_AMOUNT_ATOMIC = "10000" as const;
 const PAYMENT_AMOUNT_USD = "0.01" as const;
 const PAYMENT_PRICE_LABEL = "$0.01" as const;
+const SERVICE_NAME = "AgentEval Forge" as const;
+const SERVICE_DESCRIPTION =
+  "Independent, audit-friendly Mode A evidence review of coding-agent run evidence." as const;
 
 const PORT = Number.parseInt(process.env.PORT ?? "4081", 10);
 const NETWORK = (
@@ -63,6 +69,171 @@ const PUBLIC_RESOURCE_URL = (process.env.PUBLIC_RESOURCE_URL ?? "").replace(
 const ADVERTISED_RESOURCE_URL = PUBLIC_RESOURCE_URL
   ? `${PUBLIC_RESOURCE_URL}${PAID_ROUTE}`
   : undefined;
+const BASE_RESOURCE_URL = PUBLIC_RESOURCE_URL || `http://localhost:${PORT}`;
+const ADVERTISED_PAID_RESOURCE_URL =
+  ADVERTISED_RESOURCE_URL ?? `${BASE_RESOURCE_URL}${PAID_ROUTE}`;
+const GENERIC_EVIDENCE_INPUT_EXAMPLE = {
+  schema_version: "1.0",
+  run_id: "run_2026_06_06_001",
+  task: {
+    task_id: "optional-client-task-id",
+    prompt: "Fix the off-by-one bug in the range validation function.",
+  },
+  patch: {
+    format: "unified_diff",
+    text: "--- a/file.py\n+++ b/file.py\n@@ ...",
+  },
+};
+
+const GENERIC_EVIDENCE_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    schema_version: { const: "1.0" },
+    run_id: { type: "string", minLength: 1 },
+    producer: {
+      type: "object",
+      properties: {
+        agent_name: { type: "string" },
+        model: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+    task: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        prompt: { type: "string", minLength: 1 },
+      },
+      required: ["prompt"],
+      additionalProperties: true,
+    },
+    patch: {
+      type: "object",
+      properties: {
+        format: { const: "unified_diff" },
+        text: { type: "string", minLength: 1 },
+      },
+      required: ["format", "text"],
+      additionalProperties: false,
+    },
+    claims: {
+      type: "object",
+      properties: {
+        public_tests_passed: { type: ["boolean", "null"] },
+        hidden_tests_passed: { type: ["boolean", "null"] },
+        all_tests_passed: { type: ["boolean", "null"] },
+        summary: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+    test_evidence: {
+      type: "object",
+      properties: {
+        framework: { type: "string" },
+        command: { type: "string" },
+        exit_code: { type: ["integer", "null"] },
+        summary: { type: "string" },
+        stdout: { type: "string" },
+        stderr: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+    trace: {
+      type: "object",
+      properties: {
+        commands: { type: "array", items: { type: "string" } },
+        final_message: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+    integrity: {
+      type: "object",
+      properties: {
+        algorithm: { const: "sha256" },
+        patch_sha256: { type: "string" },
+        test_evidence_sha256: { type: "string" },
+        bundle_sha256: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+    metadata: {
+      type: "object",
+      additionalProperties: true,
+    },
+  },
+  required: ["schema_version", "run_id", "task", "patch"],
+  additionalProperties: true,
+};
+
+const MODE_A_VERDICT_EXAMPLE = {
+  evaluation_id: "eval_run_2026_06_06_001",
+  mode: "evidence_review",
+  evidence_level: "self_reported_execution_evidence",
+  verdict: "requires_review",
+  scores: {
+    task_alignment: 0.82,
+    patch_minimality: 0.91,
+    evidence_quality: 0.63,
+    safety_signal: 0.88,
+  },
+  findings: [
+    {
+      severity: "warning",
+      code: "EXECUTION_NOT_INDEPENDENTLY_VERIFIED",
+      message:
+        "Execution evidence was supplied by the caller and was not reproduced by AgentEval Forge.",
+    },
+  ],
+  claims: {
+    tests_claimed_passed: true,
+    evidence_consistent_with_claim: true,
+    independently_verified: false,
+  },
+  integrity: {
+    hash_manifest_supplied: false,
+    hashes_verified: false,
+  },
+  human_review: {
+    recommended: true,
+    reasons: ["Execution was not independently reproduced."],
+  },
+};
+
+const MODE_A_VERDICT_SCHEMA = {
+  type: "object",
+  properties: {
+    evaluation_id: { type: "string" },
+    mode: { const: "evidence_review" },
+    evidence_level: { type: "string" },
+    verdict: { type: "string" },
+    scores: {
+      type: "object",
+      properties: {
+        task_alignment: { type: "number" },
+        patch_minimality: { type: "number" },
+        evidence_quality: { type: "number" },
+        safety_signal: { type: "number" },
+      },
+      additionalProperties: true,
+    },
+    findings: { type: "array", items: { type: "object" } },
+    claims: { type: "object" },
+    integrity: { type: "object" },
+    human_review: { type: "object" },
+  },
+  required: [
+    "evaluation_id",
+    "mode",
+    "evidence_level",
+    "verdict",
+    "scores",
+    "findings",
+    "claims",
+    "integrity",
+    "human_review",
+  ],
+  additionalProperties: true,
+};
 
 interface FacilitatorEndpoint {
   method: "GET" | "POST";
@@ -339,108 +510,171 @@ function bazaarDiscovery(): Record<string, unknown> {
   return {
     ...declareDiscoveryExtension({
       bodyType: "json",
-      input: {
-        schema_version: "1.0",
-        run_id: "run_2026_06_06_001",
-        task: {
-          task_id: "optional-client-task-id",
-          prompt: "Fix the off-by-one bug in the range validation function.",
-        },
-        patch: {
-          format: "unified_diff",
-          text: "--- a/file.py\n+++ b/file.py\n@@ ...",
-        },
-      },
-      inputSchema: {
-        type: "object",
-        properties: {
-          schema_version: { const: "1.0" },
-          run_id: { type: "string", minLength: 1 },
-          task: {
-            type: "object",
-            properties: {
-              task_id: { type: "string" },
-              prompt: { type: "string", minLength: 1 },
-            },
-            required: ["prompt"],
-            additionalProperties: true,
-          },
-          patch: {
-            type: "object",
-            properties: {
-              format: { const: "unified_diff" },
-              text: { type: "string", minLength: 1 },
-            },
-            required: ["format", "text"],
-            additionalProperties: false,
-          },
-        },
-        required: ["schema_version", "run_id", "task", "patch"],
-        additionalProperties: true,
-      },
+      input: GENERIC_EVIDENCE_INPUT_EXAMPLE,
+      inputSchema: GENERIC_EVIDENCE_INPUT_SCHEMA,
       output: {
-        example: {
-          evaluation_id: "eval_run_2026_06_06_001",
-          mode: "evidence_review",
-          evidence_level: "self_reported_execution_evidence",
-          verdict: "requires_review",
-          scores: {
-            task_alignment: 0.82,
-            patch_minimality: 0.91,
-            evidence_quality: 0.63,
-            safety_signal: 0.88,
-          },
-          findings: [
-            {
-              severity: "warning",
-              code: "EXECUTION_NOT_INDEPENDENTLY_VERIFIED",
-              message:
-                "Execution evidence was supplied by the caller and was not reproduced by AgentEval Forge.",
-            },
-          ],
-          claims: {
-            tests_claimed_passed: true,
-            evidence_consistent_with_claim: true,
-            independently_verified: false,
-          },
-          integrity: {
-            hash_manifest_supplied: false,
-            hashes_verified: false,
-          },
-          human_review: {
-            recommended: true,
-            reasons: ["Execution was not independently reproduced."],
-          },
-        },
-        schema: {
-          type: "object",
-          properties: {
-            evaluation_id: { type: "string" },
-            mode: { const: "evidence_review" },
-            evidence_level: { type: "string" },
-            verdict: { type: "string" },
-            scores: { type: "object" },
-            findings: { type: "array" },
-            claims: { type: "object" },
-            integrity: { type: "object" },
-            human_review: { type: "object" },
-          },
-          required: [
-            "evaluation_id",
-            "mode",
-            "evidence_level",
-            "verdict",
-            "scores",
-            "findings",
-            "claims",
-            "integrity",
-            "human_review",
-          ],
-          additionalProperties: true,
-        },
+        example: MODE_A_VERDICT_EXAMPLE,
+        schema: MODE_A_VERDICT_SCHEMA,
       },
     }),
     discoverable: true,
+  };
+}
+
+function healthPayload(): Record<string, unknown> {
+  return {
+    status: "ok",
+    service: SERVICE_NAME,
+    mode: "evidence_review",
+    network: NETWORK,
+    paidRoute: PAID_ROUTE,
+  };
+}
+
+function networkLabel(): string {
+  return NETWORK === MAINNET_NETWORK ? "Base mainnet" : "Base Sepolia testnet";
+}
+
+function llmsText(): string {
+  return [
+    "# AgentEval Forge",
+    "",
+    "AgentEval Forge is an independent, audit-friendly evaluation service for coding-agent runs. It provides Mode A, read-only evidence review.",
+    "",
+    "Given a generic agent-run evidence package with a task, a unified diff, and optional claims, test evidence, operational trace, and integrity hashes, it returns a structured verdict with task_alignment, patch_minimality, evidence_quality, and safety_signal scores, an evidence_level, findings, and a human_review recommendation.",
+    "",
+    "AgentEval Forge never executes submitted code, never applies submitted patches, never reruns client tests, and never claims verified_pass in Mode A.",
+    "",
+    `Use it by sending POST application/json to ${PAID_ROUTE}. Payment is handled by x402 with ${PAYMENT_ASSET} on ${networkLabel()} at ${PAYMENT_PRICE_LABEL} (${PAYMENT_AMOUNT_ATOMIC} atomic units). Unpaid requests receive HTTP 402 with payment requirements.`,
+    "",
+    "See /openapi.json for the full schema and /.well-known/x402 for x402 discovery metadata.",
+    "",
+  ].join("\n");
+}
+
+function openApiDocument(): Record<string, unknown> {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "AgentEval Forge Paid Evidence Review API",
+      version: "0.1.0",
+      description:
+        `${SERVICE_DESCRIPTION} The paid route runs Mode A only and requires x402 payment.`,
+    },
+    servers: [{ url: BASE_RESOURCE_URL }],
+    paths: {
+      [PAID_ROUTE]: {
+        post: {
+          summary: "Evaluate coding-agent run evidence",
+          operationId: "evaluateAgentRunPaid",
+          description:
+            "Runs read-only Mode A evidence review for a generic V1 evidence package. Requires x402 payment. Unpaid requests receive HTTP 402 with payment requirements. The service does not execute submitted code and never returns verified_pass in Mode A.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: GENERIC_EVIDENCE_INPUT_SCHEMA,
+                examples: {
+                  minimal: { value: GENERIC_EVIDENCE_INPUT_EXAMPLE },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Mode A evidence-review verdict.",
+              content: {
+                "application/json": {
+                  schema: MODE_A_VERDICT_SCHEMA,
+                  examples: {
+                    requiresReview: { value: MODE_A_VERDICT_EXAMPLE },
+                  },
+                },
+              },
+            },
+            "400": {
+              description: "Invalid generic evidence package.",
+            },
+            "402": {
+              description: "x402 payment required.",
+            },
+            "413": {
+              description: "Request body exceeds configured limit.",
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function x402Descriptor(): Record<string, unknown> {
+  const routeConfig = paidRouteConfig();
+  return {
+    service: SERVICE_NAME,
+    description: SERVICE_DESCRIPTION,
+    paidRoutes: [
+      {
+        method: "POST",
+        path: PAID_ROUTE,
+        resource: ADVERTISED_PAID_RESOURCE_URL,
+        network: NETWORK,
+        asset: PAYMENT_ASSET,
+        price: EVALUATION_REVIEW_PRICE_USD,
+        amountUsd: PAYMENT_AMOUNT_USD,
+        amountAtomic: PAYMENT_AMOUNT_ATOMIC,
+        payTo: SELLER_RECEIVER_ADDRESS,
+        scheme: "exact",
+        accepts: routeConfig.accepts,
+        mimeType: routeConfig.mimeType,
+        extensions: routeConfig.extensions,
+      },
+    ],
+    links: {
+      openapi: "/openapi.json",
+      llms: "/llms.txt",
+      health: "/health",
+    },
+  };
+}
+
+function apiCatalog(): Record<string, unknown> {
+  return {
+    name: SERVICE_NAME,
+    description: SERVICE_DESCRIPTION,
+    apis: [
+      {
+        name: "AgentEval Forge Paid Evidence Review",
+        description:
+          "x402-paid Mode A evidence review for coding-agent run evidence.",
+        paidRoute: {
+          method: "POST",
+          path: PAID_ROUTE,
+        },
+        links: [
+          { rel: "openapi", href: "/openapi.json", type: "application/json" },
+          {
+            rel: "x402",
+            href: "/.well-known/x402",
+            type: "application/json",
+          },
+          { rel: "llms", href: "/llms.txt", type: "text/plain" },
+        ],
+      },
+    ],
+  };
+}
+
+function landingPayload(): Record<string, unknown> {
+  return {
+    service: SERVICE_NAME,
+    description: SERVICE_DESCRIPTION,
+    links: {
+      llms: "/llms.txt",
+      openapi: "/openapi.json",
+      x402: "/.well-known/x402",
+      health: "/health",
+    },
   };
 }
 
@@ -483,19 +717,63 @@ const paymentRoutes: Record<string, RouteConfig> = {
 };
 
 const app = express();
+app.use(createAccessLogMiddleware());
 app.use(express.json({ limit: BODY_LIMIT }));
 
+app.head("/", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
+app.get("/", (_req: Request, res: Response) => {
+  res.status(200).json(landingPayload());
+});
+
+app.head("/health", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json({
-    ok: true,
-    service: "agenteval-paid-evidence-review",
-    route: PAID_ROUTE,
-    mode: "evidence_review",
-    network: NETWORK,
-    asset: PAYMENT_ASSET,
-    amountAtomic: PAYMENT_AMOUNT_ATOMIC,
-    amountUsd: PAYMENT_AMOUNT_USD,
-  });
+  res.status(200).json(healthPayload());
+});
+
+app.head("/llms.txt", (_req: Request, res: Response) => {
+  res.status(200).type("text/plain").end();
+});
+
+app.get("/llms.txt", (_req: Request, res: Response) => {
+  res.status(200).type("text/plain").send(llmsText());
+});
+
+app.head("/openapi.json", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
+app.get("/openapi.json", (_req: Request, res: Response) => {
+  res.status(200).json(openApiDocument());
+});
+
+app.head("/.well-known/x402", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
+app.get("/.well-known/x402", (_req: Request, res: Response) => {
+  res.status(200).json(x402Descriptor());
+});
+
+app.head("/apis.json", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
+app.get("/apis.json", (_req: Request, res: Response) => {
+  res.status(200).json(apiCatalog());
+});
+
+app.head("/.well-known/api-catalog", (_req: Request, res: Response) => {
+  res.status(200).end();
+});
+
+app.get("/.well-known/api-catalog", (_req: Request, res: Response) => {
+  res.status(200).json(apiCatalog());
 });
 
 app.post(
@@ -537,7 +815,7 @@ app.post(PAID_ROUTE, async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const message =
     err instanceof Error && "type" in err && err.type === "entity.too.large"
       ? "request body exceeds configured limit"
@@ -546,10 +824,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (status === 500) {
     console.error("[agenteval-paid-service] unhandled error");
   }
-  res.status(status).json({ error: message });
+  res.status(status);
+  markRequestError(req, res);
+  res.json({ error: message });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(
     `[agenteval-paid-service] listening on http://localhost:${PORT} ` +
       `route=${PAID_ROUTE} mode=evidence_review network=${NETWORK} ` +
@@ -560,4 +840,15 @@ app.listen(PORT, () => {
       )} ` +
       `resource=${ADVERTISED_RESOURCE_URL ?? `http://localhost:${PORT}${PAID_ROUTE} (request-derived default)`}`,
   );
+});
+
+// Bound incomplete or idle public-pilot connections so external probes
+// cannot hold sockets indefinitely.
+server.headersTimeout = 10_000;
+server.requestTimeout = 15_000;
+server.keepAliveTimeout = 5_000;
+server.maxRequestsPerSocket = 100;
+
+server.setTimeout(15_000, (socket) => {
+  socket.destroy();
 });

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "build": "tsc --noEmit",
-    "smoke:paid": "tsx src/smoke-paid.ts"
+    "smoke:paid": "tsx src/smoke-paid.ts",
+    "test": "tsx --test src/http-access-log.test.ts"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.50.0",
